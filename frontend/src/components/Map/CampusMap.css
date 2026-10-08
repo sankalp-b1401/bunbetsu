@@ -1,0 +1,88 @@
+.bunbetsu-map-container {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #f8fafc;
+}
+
+/* Basemap toggle button in top right */
+.bunbetsu-basemap-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+}
+
+.bunbetsu-toggle-btn {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.bunbetsu-toggle-btn:hover {
+  background: #ffffff;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.bunbetsu-toggle-btn.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.bunbetsu-toggle-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  display: inline-block;
+}
+
+.bunbetsu-toggle-btn.active .bunbetsu-toggle-indicator {
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+
+/* Ensure maplibre controls have sleek modern styling */
+.bunbetsu-map-container .maplibregl-ctrl-group {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+.bunbetsu-map-container .maplibregl-ctrl-group button {
+  width: 32px;
+  height: 32px;
+  transition: background-color 0.15s ease;
+}
+
+.bunbetsu-map-container .maplibregl-ctrl-group button:hover {
+  background-color: #f8fafc;
+}
+
+.bunbetsu-map-container .maplibregl-ctrl-attrib {
+  font-size: 10px;
+  opacity: 0.65;
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(4px);
+  border-radius: 4px;
+  margin: 4px;
+}
