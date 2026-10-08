@@ -1,4 +1,4 @@
-# BunBetsu
+# Bunbetsu (分別)
 
 Intelligent Waste Managment Platform for College Events
 
