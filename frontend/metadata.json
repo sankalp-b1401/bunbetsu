@@ -1,0 +1,6 @@
+{
+  "name": "Bunbetsu - Campus Event Waste Planning",
+  "description": "Interactive three-step campus event waste prediction and sustainable venue planning application.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

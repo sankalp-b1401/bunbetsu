@@ -6,7 +6,7 @@
 # Project Specific
 # ------------------------------------------
 research/
-MAP_IMPLEMENTATION_PLAN.md
+*.zip
 
 # ------------------------------------------
 # Environment Variables & Secrets

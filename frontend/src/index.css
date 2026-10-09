@@ -1,31 +1,125 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@theme {
+  --font-heading: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --color-brand-forest: #004B20;
+  --color-brand-lime: #70D000;
+  --color-brand-botanical: #EAF5E6;
+  --color-brand-warmwhite: #F7F9F5;
+  --color-brand-surface: #FFFFFF;
+  --color-brand-charcoal: #202820;
+  --color-brand-secondary: #667267;
+  --color-brand-border: #E1E8DE;
+  --color-brand-error: #B42318;
+}
+
 :root {
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-family: var(--font-sans);
-  line-height: 1.5;
-  font-weight: 400;
-  color: #0f172a;
-  background-color: #f8fafc;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --brand-forest: #004B20;
+  --brand-lime: #70D000;
+  --brand-botanical: #EAF5E6;
+  --brand-warmwhite: #F7F9F5;
+  --brand-surface: #FFFFFF;
+  --brand-charcoal: #202820;
+  --brand-secondary: #667267;
+  --brand-border: #E1E8DE;
+  --brand-error: #B42318;
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #202820;
+    background-color: #F7F9F5;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    letter-spacing: -0.02em;
+  }
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
+.font-heading {
+  font-family: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Custom scrollbars for side panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E1E8DE;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C4D1BF;
+}
+
+/* MapLibre custom control styles matching Bunbetsu's design */
+.maplibregl-ctrl-group {
+  border-radius: 6px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid #E1E8DE !important;
   overflow: hidden;
+  background-color: #FFFFFF !important;
 }
 
-#root {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  overflow: hidden;
+.maplibregl-ctrl-group button {
+  width: 34px !important;
+  height: 34px !important;
+}
+
+.maplibregl-popup-content {
+  padding: 10px 14px !important;
+  border-radius: 6px !important;
+  box-shadow: 0 8px 24px rgba(0, 75, 32, 0.12) !important;
+  border: 1px solid #E1E8DE !important;
+  font-family: 'Inter', sans-serif !important;
+  color: #202820 !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #FFFFFF !important;
+}
+
+/* Ensure '+' crosshair cursor is permanently active during add location / drawing mode */
+.mode-add-location,
+.mode-add-location .maplibregl-canvas-container,
+.mode-add-location .maplibregl-canvas,
+.mode-add-location .maplibregl-interactive,
+.mode-add-location canvas {
+  cursor: crosshair !important;
+}
+
+/* While actively dragging/panning the map, show grabbing */
+.mode-add-location.is-panning,
+.mode-add-location.is-panning .maplibregl-canvas-container,
+.mode-add-location.is-panning .maplibregl-canvas,
+.mode-add-location.is-panning .maplibregl-interactive,
+.mode-add-location.is-panning canvas {
+  cursor: grabbing !important;
+}
+
+/* While adding location, prevent markers from capturing clicks or reverting cursor to pointer/pan */
+.mode-add-location .maplibregl-marker:not(.draft-vertex) {
+  pointer-events: none !important;
+  cursor: crosshair !important;
+}
+
+/* Prevent accidental displacement of map markers on hover */
+.maplibregl-marker {
+  transition: none !important;
+}
+.maplibregl-marker:not(.draft-vertex) > div {
+  transform: none !important;
+  transition: none !important;
 }
