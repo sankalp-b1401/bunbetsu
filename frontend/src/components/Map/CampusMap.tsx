@@ -25,7 +25,7 @@ interface CampusMapProps {
   campus: Campus | null;
   locations?: CampusLocation[];
   selectedLocationId?: string | null;
-  onSelectLocation?: (locationId: string) => void;
+  onSelectLocation?: (locationId: string, fallbackLocation?: CampusLocation) => void;
   onAddCustomLocation?: (newLocation: CampusLocation) => void;
   onUpdateLocation?: (updatedLocation: CampusLocation) => void;
   onStartEditLocation?: (locationId: string) => void;
@@ -103,16 +103,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   // Helper to directly select an existing location or add & select an unselected location
   const handleSelectOrAddLocation = (loc: CampusLocation) => {
     if (currentModeRef.current === 'addArea') return;
-    const currentList = locationsRef.current;
-    const exists = currentList.some((l) => l.id === loc.id);
-    if (!exists) {
-      // Once unselected and then reselected, only the name stays the same, activity profile is not preselected
-      onAddCustomLocationRef.current?.({
-        ...loc,
-        activities: [],
-      });
-    }
-    onSelectLocationRef.current?.(loc.id);
+    onSelectLocationRef.current?.(loc.id, loc);
   };
 
   const editingMarkerIdRef = useRef<string | null>(null);
@@ -1081,7 +1072,6 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     };
 
     onAddCustomLocation?.(newLocation);
-    onSelectLocation?.(newLocId);
     setPendingNewArea(null);
     setDraftPoints([]);
     setCurrentMode('select');

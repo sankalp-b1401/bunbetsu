@@ -113,25 +113,26 @@ export default function App() {
   };
 
   // Select / reselect a location (either already in active event or previously unselected)
-  const handleSelectLocation = (locationId: string) => {
-    const isAlreadyActive = locations.some((l) => l.id === locationId);
-    if (isAlreadyActive) {
-      setSelectedLocationId(locationId);
-      return;
-    }
+  const handleSelectLocation = (locationId: string, fallbackLocation?: CampusLocation) => {
+    setLocations((prev) => {
+      const isAlreadyActive = prev.some((l) => l.id === locationId);
+      if (isAlreadyActive) {
+        return prev;
+      }
 
-    // Location was unselected or available: reselect it with a FRESH, un-preselected activity profile
-    const foundInPool = allCampusLocations.find((l) => l.id === locationId);
-    if (foundInPool) {
-      const freshReselectedLocation: CampusLocation = {
-        ...foundInPool,
-        activities: [], // Fresh unselected activities; only name and geometry persist!
-      };
-      setLocations((prev) => [...prev, freshReselectedLocation]);
-      setSelectedLocationId(locationId);
-    } else {
-      setSelectedLocationId(locationId);
-    }
+      // Location was unselected or available: reselect it with a FRESH, un-preselected activity profile
+      const foundInPool = allCampusLocations.find((l) => l.id === locationId) || fallbackLocation;
+      if (foundInPool) {
+        const freshReselectedLocation: CampusLocation = {
+          ...foundInPool,
+          activities: [], // Fresh unselected activities; only name and geometry persist!
+        };
+        return [...prev.filter((l) => l.id !== locationId), freshReselectedLocation];
+      }
+      return prev;
+    });
+    setSelectedLocationId(locationId);
+    if (predictionError) setPredictionError(null);
   };
 
   // Active campus merged with all available locations (preset + user-created)

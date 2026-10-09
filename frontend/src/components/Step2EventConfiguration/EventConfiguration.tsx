@@ -19,7 +19,7 @@ interface EventConfigurationProps {
   onUpdateEventDetails: (details: Partial<EventDetails>) => void;
   locations: CampusLocation[];
   selectedLocationId: string | null;
-  onSelectLocation: (locationId: string) => void;
+  onSelectLocation: (locationId: string, fallbackLocation?: CampusLocation) => void;
   onAddCustomLocation: (newLocation: CampusLocation) => void;
   onUpdateLocation: (updatedLocation: CampusLocation) => void;
   onDeleteLocation: (locationId: string) => void;
