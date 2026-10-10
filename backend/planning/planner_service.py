@@ -28,7 +28,9 @@ from models.bin_distribution_model.bin_distribution_model import (
     USABLE_BIN_CAPACITY_LITRES,
     USABLE_FILL_FRACTION,
     OnLocationBinPrediction,
+    RoadBinPrediction,
     predict_on_location_bins,
+    predict_road_bins,
 )
 from models.waste_predictor_model.waste_predictor_model import (
     ACTIVITIES,
@@ -47,6 +49,8 @@ from .schemas import (
     CampusPlanResponse,
     LocationBinRecommendation,
     PlanDiagnostics,
+    RoadBinPlacementMarker,
+    RoadBinRecommendationResponse,
     StageStatus,
     StreamRecommendationSchema,
 )
@@ -529,7 +533,92 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
         warnings.append("Campus boundary GeoJSON not provided; pedestrian route planning skipped.")
 
     # -------------------------------------------------------------------------
-    # 5. Aggregate Response
+    # 5. Stage 4: Influence-Based Road-Bin Placement Model
+    # -------------------------------------------------------------------------
+    road_bin_response: Optional[RoadBinRecommendationResponse] = None
+    road_bins_status: Literal["success", "partial", "failed", "skipped"] = "skipped"
+
+    if route_response is not None and route_response.paths_geojson:
+        try:
+            poly_geoms_by_id = {
+                loc.id: loc.geometry
+                for loc in request.locations
+                if loc.geometry.get("type") in ("Polygon", "MultiPolygon")
+            }
+            loc_compositions = {}
+            for loc in request.locations:
+                alloc = next(
+                    (a for a in prediction.location_allocations if a.location_name == loc.name.strip()),
+                    None,
+                )
+                if alloc is not None:
+                    loc_compositions[loc.id] = alloc.composition_kg
+
+            loc_names_by_id = {loc.id: loc.name for loc in request.locations}
+
+            if poly_geoms_by_id:
+                road_bin_result: RoadBinPrediction = predict_road_bins(
+                    location_geometries=poly_geoms_by_id,
+                    waste_compositions=loc_compositions,
+                    paths_geojson=route_response.paths_geojson,
+                    campus_boundary=request.campus_boundary,
+                    location_names=loc_names_by_id,
+                )
+
+                road_markers = [
+                    RoadBinPlacementMarker(
+                        id=p.placement_id,
+                        coordinates=[p.longitude, p.latitude],
+                        source_segment_id=p.source_segment_id,
+                        normalized_popularity_score=p.normalized_popularity_score,
+                        served_location_ids=list(p.served_location_ids),
+                        served_location_names=list(p.served_location_names),
+                        served_location_distances_m=p.served_location_distances_m,
+                        stream_type=p.stream_type,
+                        provenance=p.provenance,
+                    )
+                    for p in road_bin_result.placements
+                ]
+
+                road_bin_response = RoadBinRecommendationResponse(
+                    total_road_bins=road_bin_result.total_physical_bins,
+                    total_eligible_candidates=road_bin_result.total_eligible_candidates,
+                    total_locations_requiring_coverage=road_bin_result.total_locations_requiring_coverage,
+                    covered_location_ids=list(road_bin_result.covered_location_ids),
+                    uncovered_location_ids=list(road_bin_result.uncovered_location_ids),
+                    location_influence_radii_m=road_bin_result.location_influence_radii_m,
+                    location_dominant_waste_types=road_bin_result.location_dominant_waste_types,
+                    candidate_sampling_interval_m=road_bin_result.candidate_sampling_interval_m,
+                    road_bin_spacing_m=road_bin_result.road_bin_spacing_m,
+                    solver_name=road_bin_result.solver_name,
+                    optimality_proven=road_bin_result.optimality_proven,
+                    total_popularity_score=road_bin_result.total_popularity_score,
+                    placements=road_markers,
+                    warnings=list(road_bin_result.warnings),
+                    assumptions=list(road_bin_result.assumptions),
+                )
+
+                if road_bin_result.warnings:
+                    warnings.extend(road_bin_result.warnings)
+
+                if len(road_bin_result.covered_location_ids) == len(poly_geoms_by_id):
+                    road_bins_status = "success"
+                elif road_bin_result.covered_location_ids:
+                    road_bins_status = "partial"
+                else:
+                    road_bins_status = "failed"
+            else:
+                road_bins_status = "skipped"
+                warnings.append("No Polygon/MultiPolygon locations provided; road-bin placement skipped.")
+        except Exception as rb_exc:
+            logger.warning("Road-bin placement model encountered an error: %s", rb_exc, exc_info=True)
+            road_bins_status = "failed"
+            warnings.append(f"Road-bin placement model error: {rb_exc}")
+    else:
+        road_bins_status = "skipped"
+
+    # -------------------------------------------------------------------------
+    # 6. Aggregate Response
     # -------------------------------------------------------------------------
     diagnostics = PlanDiagnostics(
         warnings=warnings,
@@ -545,6 +634,7 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
         success=True,
         prediction=serialized_prediction,
         bin_recommendations=bin_recommendations_response,
+        road_bin_recommendations=road_bin_response,
         routes=route_response,
         diagnostics=diagnostics,
     )

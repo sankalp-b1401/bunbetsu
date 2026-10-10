@@ -11,6 +11,7 @@ import {
   WasteCategory,
   HeatmapData,
   BinRecommendationResult,
+  RoadBinRecommendationResult,
   MapMode,
 } from "../../types/bunbetsu";
 import { ACTIVITIES, ActivityIcon } from "../../constants/activities";
@@ -82,6 +83,7 @@ interface CampusMapProps {
   showLabels?: boolean;
   showBins?: boolean;
   binRecommendations?: BinRecommendationResult | null;
+  roadBinRecommendations?: RoadBinRecommendationResult | null;
   selectedRouteId?: string | null;
   onSelectRoute?: (routeId: string | null) => void;
   mapViewMode?: "map" | "satellite" | "terrain";
@@ -120,6 +122,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   showLabels = true,
   showBins = false,
   binRecommendations = null,
+  roadBinRecommendations = null,
   selectedRouteId = null,
   onSelectRoute,
   mapViewMode = "map",
@@ -1390,7 +1393,27 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         binMarkersRef.current.push(marker);
       });
     }
-  }, [showBins, binRecommendations]);
+
+    // Visually distinct road-bin placement markers
+    if (showBins && roadBinRecommendations?.placements?.length) {
+      roadBinRecommendations.placements.forEach((rbin) => {
+        const el = document.createElement("div");
+        el.className =
+          "group flex items-center justify-center cursor-pointer select-none";
+        const servNames = (rbin.served_location_names || []).join(", ");
+        const title = `Road Bin (${rbin.id}): ${rbin.stream_type} · Serves: ${servNames} · Popularity: ${(rbin.normalized_popularity_score * 100).toFixed(0)}%`;
+        el.innerHTML = `
+          <div class="flex items-center justify-center w-7 h-7 rounded-full shadow-lg border-2 border-white text-xs hover:scale-115 transition-transform bg-[#D97706] ring-2 ring-amber-400/60" title="${title}">
+            <span class="text-[11px] leading-none text-white font-bold">🚏</span>
+          </div>
+        `;
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat(rbin.coordinates)
+          .addTo(map);
+        binMarkersRef.current.push(marker);
+      });
+    }
+  }, [showBins, binRecommendations, roadBinRecommendations]);
 
   // Fit bounds when a route is selected
   useEffect(() => {

@@ -6,6 +6,7 @@ import {
   HeatmapMode,
   WasteCategory,
   BinRecommendationResult,
+  RoadBinRecommendationResult,
   RoutePlanResult,
 } from '../../types/bunbetsu';
 import { CampusMap } from '../Map/CampusMap';
@@ -26,6 +27,7 @@ interface PlanMapPanelProps {
   showActivityIcons?: boolean;
   showBins: boolean;
   binRecommendations?: BinRecommendationResult | null;
+  roadBinRecommendations?: RoadBinRecommendationResult | null;
 
   routeResult: RoutePlanResult | null;
   showRoutes: boolean;
@@ -47,6 +49,7 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
   showActivityIcons = true,
   showBins,
   binRecommendations,
+  roadBinRecommendations,
   routeResult,
   showRoutes,
   selectedRouteId,
@@ -149,6 +152,14 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
                     Recyclable bin (100L)
                   </span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-[#D97706] ring-1.5 ring-amber-300 text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs font-bold">
+                    🚏
+                  </div>
+                  <span className="text-[11px] font-medium text-[#202820]">
+                    Road bin station (dual stream)
+                  </span>
+                </div>
               </div>
 
               {/* Event location zone */}
@@ -187,6 +198,7 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
           showLabels={showActivityIcons}
           showBins={showBins}
           binRecommendations={binRecommendations}
+          roadBinRecommendations={roadBinRecommendations}
           selectedRouteId={selectedRouteId}
           onSelectRoute={onSelectRoute}
           mapViewMode="map"

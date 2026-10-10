@@ -237,6 +237,48 @@ class BinRecommendationResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Aggregated placement warnings")
 
 
+class RoadBinPlacementMarker(BaseModel):
+    """A selected physical road bin placed along a pedestrian path."""
+
+    id: str = Field(..., description="Stable unique placement ID, e.g. road-bin-1")
+    coordinates: list[float] = Field(..., description="[longitude, latitude] in WGS84")
+    source_segment_id: str = Field(..., description="Source mapped road-segment ID")
+    normalized_popularity_score: float = Field(..., description="Normalized popularity score [0, 1]")
+    served_location_ids: list[str] = Field(default_factory=list, description="IDs of served locations")
+    served_location_names: list[str] = Field(default_factory=list, description="Names of served locations")
+    served_location_distances_m: dict[str, float] = Field(
+        default_factory=dict, description="Distance from served location footprint boundary in metres"
+    )
+    stream_type: str = Field(default="Dual-compartment station", description="Stream or station configuration")
+    provenance: str = Field(default="road_bin_optimizer", description="Placement provenance")
+
+
+class RoadBinRecommendationResponse(BaseModel):
+    """Output from influence-based road-bin placement optimizer."""
+
+    total_road_bins: int = Field(..., description="Total selected physical road bins")
+    total_eligible_candidates: int = Field(..., description="Total eligible candidate points generated")
+    total_locations_requiring_coverage: int = Field(..., description="Total activity locations requiring road coverage")
+    covered_location_ids: list[str] = Field(default_factory=list, description="IDs of locations covered")
+    uncovered_location_ids: list[str] = Field(default_factory=list, description="IDs of uncovered locations")
+    location_influence_radii_m: dict[str, float] = Field(
+        default_factory=dict, description="Influence radius assigned per location in metres"
+    )
+    location_dominant_waste_types: dict[str, str] = Field(
+        default_factory=dict, description="Dominant waste type assigned per location"
+    )
+    candidate_sampling_interval_m: float = Field(default=5.0, description="Sampling interval in metres")
+    road_bin_spacing_m: float = Field(default=25.0, description="Minimum spacing policy in metres")
+    solver_name: str = Field(..., description="Solver name used")
+    optimality_proven: bool = Field(..., description="True if proven mathematically optimal")
+    total_popularity_score: float = Field(default=0.0, description="Total popularity score of selected placements")
+    placements: list[RoadBinPlacementMarker] = Field(
+        default_factory=list, description="Selected road-bin placements"
+    )
+    warnings: list[str] = Field(default_factory=list, description="Road-bin placement warnings")
+    assumptions: list[str] = Field(default_factory=list, description="Model physical assumptions")
+
+
 class StageStatus(BaseModel):
     """Explicit status tracking for each pipeline stage."""
 
@@ -265,6 +307,9 @@ class CampusPlanResponse(BaseModel):
     )
     bin_recommendations: Optional[BinRecommendationResponse] = Field(
         default=None, description="Bin distribution model output with [lng, lat] placement coordinates"
+    )
+    road_bin_recommendations: Optional[RoadBinRecommendationResponse] = Field(
+        default=None, description="Influence-based road-bin placement model output along pedestrian paths"
     )
     routes: Optional[RoutePlanResponse] = Field(
         default=None, description="Pedestrian routing network and scored corridors, if boundary provided"

@@ -36,6 +36,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   routesError,
   routesStale,
   binRecommendations = null,
+  roadBinRecommendations = null,
   sensitivitySeries,
   onBackToConfigure,
   onRecalculatePrediction,
@@ -195,6 +196,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 showActivityIcons={showActivityIcons}
                 showBins={showBins}
                 binRecommendations={binRecommendations}
+                roadBinRecommendations={roadBinRecommendations}
                 routeResult={routeResult}
                 showRoutes={showRoutes}
                 selectedRouteId={selectedRouteId}
@@ -227,6 +229,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             <div className="min-h-0" style={{ flex: '3 1 0%' }}>
               <BinRecommendationsPanel
                 binRecommendations={binRecommendations}
+                roadBinRecommendations={roadBinRecommendations}
                 locationAllocations={prediction?.location_allocations || []}
                 onViewOnMap={() => setShowBins((prev) => !prev)}
                 showBins={showBins}

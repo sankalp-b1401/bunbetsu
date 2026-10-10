@@ -435,6 +435,7 @@ export async function requestCampusPlan(
   return {
     prediction: predictionResult,
     binRecommendations,
+    roadBinRecommendations: data.road_bin_recommendations || null,
     routeResult: data.routes || null,
     diagnostics: data.diagnostics,
   };

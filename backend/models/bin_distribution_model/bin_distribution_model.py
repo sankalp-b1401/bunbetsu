@@ -21,13 +21,29 @@ collection feasibility must be reviewed before deployment.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 import math
 from typing import Any, Mapping
 
+import numpy as np
 from pyproj import CRS, Transformer
-from shapely.geometry import LineString, MultiPolygon, Point, Polygon, shape
-from shapely.ops import transform
+from shapely.geometry import (
+    GeometryCollection,
+    LineString,
+    MultiLineString,
+    MultiPolygon,
+    Point,
+    Polygon,
+    shape,
+)
+from shapely.ops import transform, unary_union
+
+try:
+    from scipy.optimize import Bounds, LinearConstraint, milp
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
 
 from models.waste_predictor_model.waste_predictor_model import (
     FestInput,
@@ -57,6 +73,20 @@ WASTE_DENSITY_KG_PER_M3: dict[str, float] = {
 DEFAULT_BOUNDARY_SPACING_M = 25.0
 DEFAULT_BOUNDARY_INSET_M = 1.5
 DEFAULT_CLOSE_SPACING_WARNING_M = 3.0
+
+# Waste-type-specific influence radii (in metres)
+# Provisional baseline engineering radii measured outward from activity polygon boundary.
+DEFAULT_WASTE_INFLUENCE_RADII_M: dict[str, float] = {
+    "Food": 15.0,
+    "Glass": 15.0,
+    "Others": 20.0,
+    "Paper": 25.0,
+    "Plastic": 25.0,
+}
+WASTE_INFLUENCE_RADII_M = DEFAULT_WASTE_INFLUENCE_RADII_M
+
+DEFAULT_ROAD_BIN_SPACING_M = 25.0
+DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M = 5.0
 
 
 def round_half_up(value: float) -> int:
@@ -238,6 +268,66 @@ class OnLocationBinPrediction:
     def effective_capacity_litres_per_bin_per_day(self) -> float:
         """Deprecated alias: replaced by usable_bin_capacity_litres."""
         return self.usable_bin_capacity_litres
+
+
+@dataclass(frozen=True)
+class RoadBinCandidate:
+    """A feasible candidate point along a mapped pedestrian road."""
+
+    candidate_id: str
+    longitude: float
+    latitude: float
+    metric_x: float
+    metric_y: float
+    source_segment_id: str
+    normalized_popularity_score: float
+    served_location_ids: tuple[str, ...]
+
+    @property
+    def coordinates(self) -> tuple[float, float]:
+        return (self.longitude, self.latitude)
+
+
+@dataclass(frozen=True)
+class RoadBinPlacement:
+    """A selected physical road bin placed along a pedestrian path."""
+
+    placement_id: str
+    longitude: float
+    latitude: float
+    source_segment_id: str
+    normalized_popularity_score: float
+    served_location_ids: tuple[str, ...]
+    served_location_names: tuple[str, ...]
+    served_location_distances_m: dict[str, float]
+    stream_type: str = "Dual-compartment station"
+    provenance: str = "road_bin_optimizer"
+
+    @property
+    def coordinates(self) -> tuple[float, float]:
+        return (self.longitude, self.latitude)
+
+
+@dataclass(frozen=True)
+class RoadBinPrediction:
+    """Influence-based road-bin prediction and placement results."""
+
+    placements: tuple[RoadBinPlacement, ...]
+    total_physical_bins: int
+    total_eligible_candidates: int
+    total_locations_requiring_coverage: int
+    covered_location_ids: tuple[str, ...]
+    uncovered_location_ids: tuple[str, ...]
+    location_influence_radii_m: dict[str, float]
+    location_dominant_waste_types: dict[str, str]
+    candidate_sampling_interval_m: float
+    road_bin_spacing_m: float
+    solver_name: str
+    optimality_proven: bool
+    total_popularity_score: float
+    warnings: tuple[str, ...]
+    assumptions: tuple[str, ...]
+    diagnostics: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 def _validate_density_map(densities: Mapping[str, float]) -> None:
@@ -918,4 +1008,616 @@ def predict_on_location_bins(
             "The 25 m default is Bunbetsu's configured planning policy, not a universal statutory standard.",
             "This model does not yet test access paths, doorways, utilities, emergency routes, slope, or exact pedestrian demand; review placements before operational use.",
         ),
+    )
+
+
+def determine_dominant_waste_type(
+    composition_mass_kg: Mapping[str, Any] | LocationWasteAllocation,
+) -> tuple[str, float]:
+    """Identify the dominant waste category for an activity location.
+
+    The dominant category is the category with the largest predicted mass
+    (central scenario) for that location. Ties are broken deterministically
+    by canonical alphabetical category order.
+    """
+    if isinstance(composition_mass_kg, LocationWasteAllocation):
+        comp_dict = composition_mass_kg.composition_kg
+    elif isinstance(composition_mass_kg, Mapping):
+        comp_dict = composition_mass_kg
+    else:
+        raise ValueError("Waste composition must be a mapping or LocationWasteAllocation.")
+
+    if not comp_dict:
+        raise ValueError("Waste composition map cannot be empty.")
+
+    parsed_masses: dict[str, float] = {}
+    for cat, val in comp_dict.items():
+        if hasattr(val, "central"):
+            m = float(val.central)
+        elif isinstance(val, dict) and "central" in val:
+            m = float(val["central"])
+        elif isinstance(val, (int, float)):
+            m = float(val)
+        else:
+            raise ValueError(f"Invalid waste mass value for category {cat!r}: {val!r}")
+
+        if not math.isfinite(m) or m < 0:
+            raise ValueError(
+                f"Waste mass for category {cat!r} must be non-negative and finite, got {m}."
+            )
+        parsed_masses[str(cat)] = m
+
+    if not parsed_masses:
+        raise ValueError("No valid waste categories provided.")
+
+    # Sort deterministically: highest mass first, alphabetical category name for ties
+    sorted_cats = sorted(parsed_masses.keys(), key=lambda c: (-parsed_masses[c], c))
+    dominant_cat = sorted_cats[0]
+    return dominant_cat, parsed_masses[dominant_cat]
+
+
+def get_influence_radius_m(
+    dominant_waste_category: str,
+    radii_map: Mapping[str, float] | None = None,
+) -> float:
+    """Retrieve the influence radius in metres for the dominant waste category."""
+    active_radii = DEFAULT_WASTE_INFLUENCE_RADII_M if radii_map is None else radii_map
+    if dominant_waste_category not in active_radii:
+        raise ValueError(
+            f"No influence radius configured for category {dominant_waste_category!r}. "
+            f"Configured categories: {sorted(active_radii.keys())}"
+        )
+    rad = float(active_radii[dominant_waste_category])
+    if not math.isfinite(rad) or rad <= 0:
+        raise ValueError(
+            f"Influence radius for {dominant_waste_category!r} must be finite and positive, got {rad}."
+        )
+    return rad
+
+
+def construct_influence_zone_m(
+    polygon_m: Polygon | MultiPolygon,
+    radius_m: float,
+) -> Polygon | MultiPolygon:
+    """Construct the influence zone I_i = B_i ⊕ D(r_i) in projected metric coordinates.
+
+    Uses Shapely's buffer operation in metres outward from the entire boundary,
+    preserving holes and multi-part geometries according to their actual shapes.
+    """
+    if polygon_m.is_empty or not polygon_m.is_valid or polygon_m.area <= 0:
+        raise ValueError("Cannot construct influence zone for an empty, invalid, or zero-area polygon.")
+    if not math.isfinite(radius_m) or radius_m <= 0:
+        raise ValueError(f"Influence radius must be finite and positive, got {radius_m}.")
+
+    zone_m = polygon_m.buffer(radius_m)
+    if zone_m.is_empty:
+        raise ValueError("Influence zone buffer produced empty geometry.")
+    return zone_m
+
+
+def _extract_linestrings_m(geom: Any) -> list[LineString]:
+    """Extract individual LineStrings from any Shapely geometry."""
+    lines: list[LineString] = []
+    if isinstance(geom, LineString):
+        if geom.length > 0:
+            lines.append(geom)
+    elif isinstance(geom, MultiLineString):
+        for g in geom.geoms:
+            if g.length > 0:
+                lines.append(g)
+    elif isinstance(geom, GeometryCollection):
+        for g in geom.geoms:
+            lines.extend(_extract_linestrings_m(g))
+    return lines
+
+
+def _solve_greedy_fallback(
+    candidates: list[RoadBinCandidate],
+    location_ids: list[str],
+    road_bin_spacing_m: float,
+) -> tuple[list[int], bool, str, list[str]]:
+    """Greedy fallback heuristic for road-bin placement.
+
+    1. Select a feasible candidate that covers the greatest number of currently uncovered locations.
+    2. Break ties using route popularity, then stable index.
+    3. Remove candidates conflicting with the selected point under the spacing rule.
+    4. Repeat until all locations are covered or no feasible candidate remains.
+    5. Report that the solution is heuristic.
+    """
+    uncovered = set(location_ids)
+    remaining_indices = list(range(len(candidates)))
+    selected_indices: list[int] = []
+    warnings: list[str] = []
+
+    while uncovered and remaining_indices:
+        best_idx: int | None = None
+        best_key = (-1, -1.0, 1)
+
+        for idx in remaining_indices:
+            c = candidates[idx]
+            cov_count = len(set(c.served_location_ids) & uncovered)
+            key = (cov_count, c.normalized_popularity_score, -idx)
+            if key > best_key:
+                best_key = key
+                best_idx = idx
+
+        if best_idx is None or best_key[0] <= 0:
+            break
+
+        selected_c = candidates[best_idx]
+        selected_indices.append(best_idx)
+        uncovered -= set(selected_c.served_location_ids)
+
+        remaining_indices = [
+            idx
+            for idx in remaining_indices
+            if math.hypot(
+                candidates[idx].metric_x - selected_c.metric_x,
+                candidates[idx].metric_y - selected_c.metric_y,
+            )
+            >= road_bin_spacing_m - 1e-4
+        ]
+
+    if uncovered:
+        warnings.append(
+            f"Spacing conflicts or candidate unavailability prevented covering {len(uncovered)} location(s): {sorted(uncovered)}."
+        )
+
+    return selected_indices, False, "greedy_set_cover_heuristic", warnings
+
+
+def _solve_road_bin_placement(
+    candidates: list[RoadBinCandidate],
+    location_ids: list[str],
+    road_bin_spacing_m: float,
+    solver_mode: str = "exact",
+) -> tuple[list[int], bool, str, list[str]]:
+    """Solve the road-bin placement optimization.
+
+    Lexicographical objective:
+    1. Minimize the number of physical road bins to cover all feasible locations.
+    2. Among solutions with the minimum bin count, maximize aggregate popularity score.
+    Spacing constraint:
+    Pairwise distance < road_bin_spacing_m => z_j + z_k <= 1.
+    """
+    m = len(candidates)
+    if m == 0 or not location_ids:
+        return [], False, "no_candidates", []
+
+    # Map each location to the candidate indices that serve it
+    candidates_serving_loc = {
+        loc_id: [j for j, c in enumerate(candidates) if loc_id in c.served_location_ids]
+        for loc_id in location_ids
+    }
+    uncovered_initially = [
+        loc_id for loc_id, c_indices in candidates_serving_loc.items() if not c_indices
+    ]
+    feasible_loc_ids = [loc_id for loc_id in location_ids if loc_id not in uncovered_initially]
+
+    if not feasible_loc_ids:
+        return [], False, "no_feasible_candidates", []
+
+    # Build pairwise conflict constraints: dist(j, k) < road_bin_spacing_m => z_j + z_k <= 1
+    conflict_pairs: list[tuple[int, int]] = []
+    for i in range(m):
+        c_i = candidates[i]
+        for j in range(i + 1, m):
+            c_j = candidates[j]
+            d = math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y)
+            if d < road_bin_spacing_m - 1e-4:
+                conflict_pairs.append((i, j))
+
+    # Try Exact ILP via scipy.optimize.milp
+    if solver_mode in ("exact", "auto") and HAS_SCIPY:
+        c_stage1 = np.ones(m)
+        integrality = np.ones(m)
+        bounds = Bounds(0, 1)
+
+        num_locs = len(feasible_loc_ids)
+        A_cov = np.zeros((num_locs, m))
+        for row_idx, loc_id in enumerate(feasible_loc_ids):
+            for col_idx in candidates_serving_loc[loc_id]:
+                A_cov[row_idx, col_idx] = 1.0
+
+        cov_constraint = LinearConstraint(A_cov, np.ones(num_locs), np.full(num_locs, np.inf))
+        constraints = [cov_constraint]
+
+        if conflict_pairs:
+            num_conf = len(conflict_pairs)
+            A_conf = np.zeros((num_conf, m))
+            for row_idx, (j, k) in enumerate(conflict_pairs):
+                A_conf[row_idx, j] = 1.0
+                A_conf[row_idx, k] = 1.0
+            conf_constraint = LinearConstraint(A_conf, np.full(num_conf, -np.inf), np.ones(num_conf))
+            constraints.append(conf_constraint)
+
+        res1 = milp(c=c_stage1, integrality=integrality, constraints=constraints, bounds=bounds)
+
+        if res1.success:
+            min_bins = int(round(float(np.sum(res1.x))))
+
+            # Stage 2: Maximize route popularity constrained to sum(z_j) == min_bins
+            bin_count_constraint = LinearConstraint(
+                np.ones((1, m)), np.array([min_bins]), np.array([min_bins])
+            )
+            stage2_constraints = list(constraints) + [bin_count_constraint]
+
+            scores = np.array([c.normalized_popularity_score for c in candidates])
+            # Deterministic secondary tie-breaker bonus: lower candidate index favored
+            eps = np.array([(m - j) / (m * 1e5) for j in range(m)])
+            c_stage2 = -(scores + eps)
+
+            res2 = milp(
+                c=c_stage2, integrality=integrality, constraints=stage2_constraints, bounds=bounds
+            )
+            if res2.success:
+                selected_indices = [j for j, val in enumerate(res2.x) if val > 0.5]
+                return selected_indices, True, "scipy_milp_highs", []
+
+        # If Stage 1 is infeasible due to spacing conflicts, fall back and record warning
+        selected_indices, _, _, fallback_warnings = _solve_greedy_fallback(
+            candidates, feasible_loc_ids, road_bin_spacing_m
+        )
+        warn_msg = (
+            f"Spacing conflict prevents simultaneous coverage for all locations under the "
+            f"{road_bin_spacing_m}m spacing rule; returning best valid partial coverage."
+        )
+        return selected_indices, False, "greedy_fallback_due_to_conflicts", [warn_msg] + fallback_warnings
+
+    # Fallback heuristic
+    return _solve_greedy_fallback(candidates, feasible_loc_ids, road_bin_spacing_m)
+
+
+def predict_road_bins(
+    location_geometries: Mapping[str, Mapping[str, Any]],
+    waste_compositions: Mapping[str, Any],
+    paths_geojson: Mapping[str, Any],
+    campus_boundary: Mapping[str, Any] | None = None,
+    *,
+    location_names: Mapping[str, str] | None = None,
+    waste_influence_radii_m: Mapping[str, float] | None = None,
+    candidate_sampling_interval_m: float = DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M,
+    road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+    solver_mode: str = "exact",
+    max_candidates_threshold: int = 2500,
+) -> RoadBinPrediction:
+    """Predict and optimize road-bin placements along pedestrian roads.
+
+    Minimizes the number of additional physical road bins while ensuring that
+    each activity location has eligible road-bin coverage within its
+    waste-type-specific influence zone.
+    """
+    if not location_geometries:
+        raise ValueError("At least one location geometry is required for road bin prediction.")
+
+    if not math.isfinite(candidate_sampling_interval_m) or candidate_sampling_interval_m <= 0:
+        raise ValueError("candidate_sampling_interval_m must be finite and positive.")
+
+    if not math.isfinite(road_bin_spacing_m) or road_bin_spacing_m <= 0:
+        raise ValueError("road_bin_spacing_m must be finite and positive.")
+
+    active_radii = dict(waste_influence_radii_m or DEFAULT_WASTE_INFLUENCE_RADII_M)
+    for cat, rad in active_radii.items():
+        if not isinstance(rad, (int, float)) or not math.isfinite(float(rad)) or float(rad) <= 0:
+            raise ValueError(f"Influence radius for {cat!r} must be finite and positive.")
+
+    loc_names_map = dict(location_names or {})
+    warnings: list[str] = []
+
+    # 1. Determine dominant waste type & influence radius per location
+    dominant_types: dict[str, str] = {}
+    radii_m: dict[str, float] = {}
+    for loc_id in location_geometries:
+        loc_display = loc_names_map.get(loc_id, loc_id)
+        if loc_id not in waste_compositions and loc_display not in waste_compositions:
+            raise ValueError(f"Missing waste composition profile for location {loc_id!r}.")
+
+        comp = waste_compositions.get(loc_id, waste_compositions.get(loc_display))
+        dom_cat, _ = determine_dominant_waste_type(comp)
+        radius = get_influence_radius_m(dom_cat, active_radii)
+        dominant_types[loc_id] = dom_cat
+        radii_m[loc_id] = radius
+
+    # 2. Parse and validate location geometries in WGS84
+    locations_wgs84: dict[str, Polygon | MultiPolygon] = {}
+    for loc_id, geom_data in location_geometries.items():
+        loc_display = loc_names_map.get(loc_id, loc_id)
+        shape_wgs84 = _to_shape(geom_data, loc_display)
+        locations_wgs84[loc_id] = shape_wgs84
+
+    # 3. Create common metric projection centered at campus boundary or combined locations
+    if campus_boundary is not None:
+        boundary_wgs84 = _to_shape(campus_boundary, "campus_boundary")
+        center_lon, center_lat = boundary_wgs84.centroid.x, boundary_wgs84.centroid.y
+    else:
+        boundary_wgs84 = None
+        all_shapes = list(locations_wgs84.values())
+        combined_centroid = unary_union(all_shapes).centroid
+        center_lon, center_lat = combined_centroid.x, combined_centroid.y
+
+    local_crs = CRS.from_proj4(
+        f"+proj=aeqd +lat_0={center_lat:.7f} +lon_0={center_lon:.7f} "
+        "+datum=WGS84 +units=m +no_defs"
+    )
+    forward = Transformer.from_crs(CRS.from_epsg(4326), local_crs, always_xy=True)
+    inverse = Transformer.from_crs(local_crs, CRS.from_epsg(4326), always_xy=True)
+
+    # Project geometries to metric
+    locations_m: dict[str, Polygon | MultiPolygon] = {
+        loc_id: transform(lambda x, y, z=None: forward.transform(x, y), geom)
+        for loc_id, geom in locations_wgs84.items()
+    }
+    boundary_m = (
+        transform(lambda x, y, z=None: forward.transform(x, y), boundary_wgs84)
+        if boundary_wgs84 is not None
+        else None
+    )
+
+    # 4. Construct influence zones in metric space: I_i = B_i ⊕ D(r_i)
+    influence_zones_m: dict[str, Polygon | MultiPolygon] = {
+        loc_id: construct_influence_zone_m(locations_m[loc_id], radii_m[loc_id])
+        for loc_id in locations_m
+    }
+    union_zones_m = unary_union(list(influence_zones_m.values()))
+
+    # 5. Extract mapped pedestrian roads and intersect with influence zones
+    features: list[dict[str, Any]] = []
+    if isinstance(paths_geojson, Mapping):
+        features = list(paths_geojson.get("features", []))
+    elif isinstance(paths_geojson, (list, tuple)):
+        features = list(paths_geojson)
+
+    raw_candidate_points: list[dict[str, Any]] = []
+    for feat_idx, feat in enumerate(features):
+        props = feat.get("properties") or {}
+        # Exclude inferred connectors or unmapped lines
+        provenance = props.get("provenance", "osm_mapped")
+        if provenance != "osm_mapped":
+            continue
+        seg_id = str(props.get("id") or feat.get("id") or f"road-seg-{feat_idx}")
+        if seg_id.startswith("conn-") or props.get("status") in ("unmatched", "flagged"):
+            continue
+
+        geom_data = feat.get("geometry")
+        if not geom_data or not isinstance(geom_data, Mapping):
+            continue
+        try:
+            road_wgs84 = shape(geom_data)
+        except Exception:
+            continue
+
+        if road_wgs84.is_empty or road_wgs84.geom_type not in ("LineString", "MultiLineString"):
+            continue
+
+        road_m = transform(lambda x, y, z=None: forward.transform(x, y), road_wgs84)
+        if boundary_m is not None:
+            road_m = road_m.intersection(boundary_m)
+            if road_m.is_empty:
+                continue
+
+        road_in_zones_m = road_m.intersection(union_zones_m)
+        if road_in_zones_m.is_empty:
+            continue
+
+        sub_lines = _extract_linestrings_m(road_in_zones_m)
+        if not sub_lines:
+            continue
+
+        norm_score = float(props.get("normalized_score", props.get("raw_score", 0.0)))
+        if not math.isfinite(norm_score) or norm_score < 0:
+            norm_score = 0.0
+        norm_score = min(1.0, norm_score)
+
+        for line in sub_lines:
+            line_len = float(line.length)
+            if line_len <= 0:
+                continue
+            distances = [0.0]
+            cur_d = candidate_sampling_interval_m
+            while cur_d < line_len - 1e-4:
+                distances.append(cur_d)
+                cur_d += candidate_sampling_interval_m
+            if abs(distances[-1] - line_len) > 1e-4:
+                distances.append(line_len)
+
+            for d in distances:
+                pt = line.interpolate(d)
+                raw_candidate_points.append(
+                    {
+                        "point": pt,
+                        "segment_id": seg_id,
+                        "normalized_score": norm_score,
+                    }
+                )
+
+        # Include mapped road segment endpoints where they fall inside the union
+        for orig_line in _extract_linestrings_m(road_m):
+            for endpt in (orig_line.interpolate(0.0), orig_line.interpolate(orig_line.length)):
+                if union_zones_m.covers(endpt) or union_zones_m.distance(endpt) < 1e-5:
+                    raw_candidate_points.append(
+                        {
+                            "point": endpt,
+                            "segment_id": seg_id,
+                            "normalized_score": norm_score,
+                        }
+                    )
+
+    # 6. Deduplicate coincident / adjacent candidates (within 0.5 m)
+    # Aggregates junction popularity to maximum incident score
+    sorted_raw = sorted(
+        raw_candidate_points,
+        key=lambda item: (round(item["point"].x, 3), round(item["point"].y, 3), item["segment_id"]),
+    )
+    deduped_clusters: list[list[dict[str, Any]]] = []
+    for item in sorted_raw:
+        pt = item["point"]
+        merged = False
+        for cluster in deduped_clusters:
+            lead_pt = cluster[0]["point"]
+            if pt.distance(lead_pt) <= 0.5:
+                cluster.append(item)
+                merged = True
+                break
+        if not merged:
+            deduped_clusters.append([item])
+
+    eligible_candidates: list[RoadBinCandidate] = []
+    cand_distances: dict[str, dict[str, float]] = {}
+
+    for cand_idx, cluster in enumerate(deduped_clusters, start=1):
+        # Best item has highest score, deterministic tie-break by segment_id
+        best_item = sorted(
+            cluster, key=lambda it: (-it["normalized_score"], str(it["segment_id"]))
+        )[0]
+        pt = best_item["point"]
+        max_score = max(it["normalized_score"] for it in cluster)
+        source_segment = str(best_item["segment_id"])
+
+        # Determine which location influence zones contain this point
+        served_ids: list[str] = []
+        dists_m: dict[str, float] = {}
+        for loc_id, loc_shape_m in locations_m.items():
+            dist = float(loc_shape_m.distance(pt))
+            if dist <= radii_m[loc_id] + 1e-4:
+                served_ids.append(loc_id)
+                dists_m[loc_id] = round(dist, 2)
+
+        if not served_ids:
+            continue
+
+        lon, lat = inverse.transform(pt.x, pt.y)
+        cand_id = f"road-cand-{cand_idx:04d}"
+        cand_distances[cand_id] = dists_m
+
+        eligible_candidates.append(
+            RoadBinCandidate(
+                candidate_id=cand_id,
+                longitude=round(float(lon), 7),
+                latitude=round(float(lat), 7),
+                metric_x=float(pt.x),
+                metric_y=float(pt.y),
+                source_segment_id=source_segment,
+                normalized_popularity_score=round(max_score, 4),
+                served_location_ids=tuple(sorted(served_ids)),
+            )
+        )
+
+    # Check for locations with no feasible candidates
+    all_loc_ids = sorted(location_geometries.keys())
+    for loc_id in all_loc_ids:
+        loc_display = loc_names_map.get(loc_id, loc_id)
+        if not any(loc_id in c.served_location_ids for c in eligible_candidates):
+            warnings.append(
+                f"Location {loc_display!r} ({loc_id}) has no feasible road candidate. "
+                f"No mapped pedestrian road intersects its {radii_m[loc_id]}m influence zone."
+            )
+
+    if not eligible_candidates:
+        return RoadBinPrediction(
+            placements=(),
+            total_physical_bins=0,
+            total_eligible_candidates=0,
+            total_locations_requiring_coverage=len(all_loc_ids),
+            covered_location_ids=(),
+            uncovered_location_ids=tuple(all_loc_ids),
+            location_influence_radii_m=radii_m,
+            location_dominant_waste_types=dominant_types,
+            candidate_sampling_interval_m=float(candidate_sampling_interval_m),
+            road_bin_spacing_m=float(road_bin_spacing_m),
+            solver_name="no_candidates",
+            optimality_proven=False,
+            total_popularity_score=0.0,
+            warnings=tuple(warnings),
+            assumptions=(
+                "Influence radii are determined by the location's dominant waste category (Food: 15m, Glass: 15m, Others: 20m, Paper: 25m, Plastic: 25m).",
+                "Influence zones extend outward from the entire activity polygon boundary, not from centroids.",
+                "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
+                "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
+                "Optimization minimizes the total count of additional physical road bins while ensuring eligible road coverage for each activity location.",
+                "Pairwise minimum spacing constraints (default 25m) prevent excessive road-bin placement density.",
+                "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
+                "Each selected road placement represents a dual-compartment station accepting both Disposable and Recyclable waste streams.",
+            ),
+            diagnostics={
+                "candidate_count": 0,
+                "coverage_matrix_size": 0,
+                "conflict_count": 0,
+                "uncovered_count": len(all_loc_ids),
+            },
+        )
+
+    # 7. Candidate threshold safety check
+    active_candidates = eligible_candidates
+    if len(eligible_candidates) > max_candidates_threshold:
+        warnings.append(
+            f"Candidate count ({len(eligible_candidates)}) exceeded threshold ({max_candidates_threshold}); "
+            "running greedy fallback optimization."
+        )
+        solver_mode = "fallback"
+
+    # 8. Solve minimum-bin optimization with spacing and route-popularity tie breaking
+    selected_indices, optimality_proven, solver_name, solver_warnings = _solve_road_bin_placement(
+        candidates=active_candidates,
+        location_ids=all_loc_ids,
+        road_bin_spacing_m=road_bin_spacing_m,
+        solver_mode=solver_mode,
+    )
+    warnings.extend(solver_warnings)
+
+    # 9. Build placements
+    placements: list[RoadBinPlacement] = []
+    for p_idx, cand_idx in enumerate(sorted(selected_indices), start=1):
+        cand = active_candidates[cand_idx]
+        served_names = tuple(loc_names_map.get(lid, lid) for lid in cand.served_location_ids)
+        placements.append(
+            RoadBinPlacement(
+                placement_id=f"road-bin-{p_idx}",
+                longitude=cand.longitude,
+                latitude=cand.latitude,
+                source_segment_id=cand.source_segment_id,
+                normalized_popularity_score=cand.normalized_popularity_score,
+                served_location_ids=cand.served_location_ids,
+                served_location_names=served_names,
+                served_location_distances_m=dict(cand_distances.get(cand.candidate_id, {})),
+                stream_type="Dual-compartment station",
+                provenance="road_bin_optimizer",
+            )
+        )
+
+    covered_ids = tuple(sorted(set(lid for p in placements for lid in p.served_location_ids)))
+    uncovered_ids = tuple(sorted(set(all_loc_ids) - set(covered_ids)))
+    total_popularity = round(sum(p.normalized_popularity_score for p in placements), 4)
+
+    return RoadBinPrediction(
+        placements=tuple(placements),
+        total_physical_bins=len(placements),
+        total_eligible_candidates=len(active_candidates),
+        total_locations_requiring_coverage=len(all_loc_ids),
+        covered_location_ids=covered_ids,
+        uncovered_location_ids=uncovered_ids,
+        location_influence_radii_m=radii_m,
+        location_dominant_waste_types=dominant_types,
+        candidate_sampling_interval_m=float(candidate_sampling_interval_m),
+        road_bin_spacing_m=float(road_bin_spacing_m),
+        solver_name=solver_name,
+        optimality_proven=optimality_proven,
+        total_popularity_score=total_popularity,
+        warnings=tuple(warnings),
+        assumptions=(
+            "Influence radii are determined by the location's dominant waste category (Food: 15m, Glass: 15m, Others: 20m, Paper: 25m, Plastic: 25m).",
+            "Influence zones extend outward from the entire activity polygon boundary, not from centroids.",
+            "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
+            "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
+            "Optimization minimizes the total count of additional physical road bins while ensuring eligible road coverage for each activity location.",
+            "Pairwise minimum spacing constraints (default 25m) prevent excessive road-bin placement density.",
+            "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
+            "Each selected road placement represents a dual-compartment station accepting both Disposable and Recyclable waste streams.",
+        ),
+        diagnostics={
+            "candidate_count": len(active_candidates),
+            "selected_count": len(placements),
+            "uncovered_count": len(uncovered_ids),
+            "solver_name": solver_name,
+            "optimality_proven": optimality_proven,
+        },
     )

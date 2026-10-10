@@ -414,3 +414,37 @@ def test_12_response_serialization_matches_frontend_contract(base_planning_paylo
         assert "errors" in diag
         assert "stage_status" in diag
         assert set(diag["stage_status"].keys()) == {"prediction", "bins", "routes"}
+
+
+def test_13_road_bin_recommendations_in_campus_plan_response(base_planning_payload):
+    with patch("routes.route_service.fetch_osm_data_for_boundary", new_callable=AsyncMock) as mock_osm:
+        mock_osm.return_value = MOCK_OSM_DATA
+        resp = client.post("/api/planning/plan", json=base_planning_payload)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert "road_bin_recommendations" in data
+        road_bins = data["road_bin_recommendations"]
+        assert road_bins is not None
+        assert "total_road_bins" in road_bins
+        assert "total_eligible_candidates" in road_bins
+        assert "covered_location_ids" in road_bins
+        assert "uncovered_location_ids" in road_bins
+        assert "location_influence_radii_m" in road_bins
+        assert "location_dominant_waste_types" in road_bins
+        assert "placements" in road_bins
+        assert road_bins["solver_name"] in ("scipy_milp_highs", "greedy_set_cover_heuristic", "no_candidates")
+
+        if road_bins["placements"]:
+            p0 = road_bins["placements"][0]
+            assert "coordinates" in p0
+            coords = p0["coordinates"]
+            assert len(coords) == 2
+            # WGS84 [longitude, latitude] order
+            assert -180 <= coords[0] <= 180
+            assert -90 <= coords[1] <= 90
+            assert p0["provenance"] == "road_bin_optimizer"
+            assert "source_segment_id" in p0
+            assert "normalized_popularity_score" in p0
+            assert "served_location_ids" in p0
+            assert "served_location_distances_m" in p0

@@ -536,13 +536,45 @@ export interface BackendCampusPlanResponse {
     assumptions: string[];
     warnings: string[];
   } | null;
+  road_bin_recommendations?: RoadBinRecommendationResult | null;
   routes: RoutePlanResult | null;
   diagnostics: CampusPlanDiagnostics;
+}
+
+export interface RoadBinPlacementItem {
+  id: string;
+  coordinates: [number, number]; // [lng, lat]
+  source_segment_id: string;
+  normalized_popularity_score: number;
+  served_location_ids: string[];
+  served_location_names: string[];
+  served_location_distances_m: Record<string, number>;
+  stream_type: string;
+  provenance: string;
+}
+
+export interface RoadBinRecommendationResult {
+  total_road_bins: number;
+  total_eligible_candidates: number;
+  total_locations_requiring_coverage: number;
+  covered_location_ids: string[];
+  uncovered_location_ids: string[];
+  location_influence_radii_m: Record<string, number>;
+  location_dominant_waste_types: Record<string, string>;
+  candidate_sampling_interval_m: number;
+  road_bin_spacing_m: number;
+  solver_name: string;
+  optimality_proven: boolean;
+  total_popularity_score: number;
+  placements: RoadBinPlacementItem[];
+  warnings: string[];
+  assumptions: string[];
 }
 
 export interface CampusPlanResult {
   prediction: PredictionResult | null;
   binRecommendations: BinRecommendationResult | null;
+  roadBinRecommendations?: RoadBinRecommendationResult | null;
   routeResult: RoutePlanResult | null;
   diagnostics: CampusPlanDiagnostics;
 }
@@ -563,6 +595,7 @@ export interface PlanDashboardProps {
   routesStale?: boolean;
 
   binRecommendations?: BinRecommendationResult | null;
+  roadBinRecommendations?: RoadBinRecommendationResult | null;
   sensitivitySeries?: BaselineSensitivityPoint[];
   diagnostics?: CampusPlanDiagnostics | null;
 
