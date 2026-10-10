@@ -184,3 +184,119 @@ export interface PredictionResult {
   };
   payload: FestInput;
 }
+
+// Phase 2: Pedestrian Routing Types
+export interface RouteSegmentProperties {
+  id: string;
+  osm_way_id?: number | null;
+  highway: string;
+  length_m: number;
+  raw_score: number;
+  normalized_score: number;
+  u: string;
+  v: string;
+  layer?: number;
+  bridge?: boolean;
+  tunnel?: boolean;
+  provenance: 'osm_mapped';
+}
+
+export interface ConnectorProperties {
+  id: string;
+  location_id: string;
+  location_name: string;
+  snap_distance_m: number;
+  connector_length_m: number;
+  status: 'connected' | 'unmatched' | 'flagged';
+  provenance: 'connector';
+  reason?: string | null;
+}
+
+export interface LocationConnectivity {
+  location_id: string;
+  location_name: string;
+  status: 'connected' | 'unmatched' | 'flagged';
+  snap_distance_m?: number | null;
+  snap_point?: [number, number] | null;
+  reason?: string | null;
+}
+
+export interface GraphDiagnostics {
+  nodes_count: number;
+  edges_count: number;
+  total_length_m: number;
+  components_count: number;
+  discarded_ways_count: number;
+}
+
+export interface ScoringDiagnostics {
+  total_locations: number;
+  connected_locations: number;
+  unmatched_locations: string[];
+  evaluated_pairs: number;
+  connected_pairs: number;
+  unreachable_pairs: number;
+  max_raw_score: number;
+}
+
+export interface RouteDiagnostics {
+  graph: GraphDiagnostics;
+  scoring: ScoringDiagnostics;
+}
+
+export interface RoutePlanResult {
+  success: boolean;
+  boundary_geojson: any;
+  paths_geojson: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      id: string;
+      geometry: {
+        type: 'LineString';
+        coordinates: number[][];
+      };
+      properties: RouteSegmentProperties;
+    }>;
+  };
+  connectors_geojson: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      id: string;
+      geometry: {
+        type: 'LineString';
+        coordinates: number[][];
+      };
+      properties: ConnectorProperties;
+    }>;
+  };
+  intersections_geojson?: {
+    type: 'FeatureCollection';
+    features: Array<{
+      type: 'Feature';
+      id: string;
+      geometry: {
+        type: 'Point';
+        coordinates: [number, number];
+      };
+      properties: {
+        node_id: string;
+        degree: number;
+        traffic_score: number;
+      };
+    }>;
+  } | null;
+  location_connectivity: LocationConnectivity[];
+  diagnostics: RouteDiagnostics;
+  metadata: {
+    version?: string;
+    description?: string;
+    cost_metric?: string;
+    pair_scoring_function?: string;
+    score_interpretation?: string;
+    [key: string]: any;
+  };
+  warnings: string[];
+}
+

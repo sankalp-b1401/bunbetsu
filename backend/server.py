@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.map_api import router as map_router
 from api.prediction_api import router as prediction_router
+from api.routes_api import router as routes_router
 
 
 app = FastAPI(
@@ -19,3 +20,4 @@ app.add_middleware(
 
 app.include_router(map_router)
 app.include_router(prediction_router)
+app.include_router(routes_router)

@@ -9,8 +9,9 @@ import { CampusFinder } from './components/Step1CampusFinder/CampusFinder';
 import { EventConfiguration } from './components/Step2EventConfiguration/EventConfiguration';
 import { PredictionPlanModal } from './components/PredictionPlanModal';
 import { SAMPLE_CAMPUSES } from './constants/activities';
-import { Campus, CampusLocation, EventDetails, PredictionResult, ActivityType } from './types/bunbetsu';
+import { Campus, CampusLocation, EventDetails, PredictionResult, ActivityType, RoutePlanResult } from './types/bunbetsu';
 import { requestWastePrediction } from './services/predictionApi';
+import { planCampusRoutes } from './services/routesApi';
 
 export default function App() {
   // 2-Step navigation: 1 = Campus Finder, 2 = Event Configuration & Plan
@@ -42,6 +43,13 @@ export default function App() {
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
   const [predictionError, setPredictionError] = useState<string | null>(null);
 
+  // Pedestrian routes pipeline state
+  const [routeResult, setRouteResult] = useState<RoutePlanResult | null>(null);
+  const [isCalculatingRoutes, setIsCalculatingRoutes] = useState<boolean>(false);
+  const [routesError, setRoutesError] = useState<string | null>(null);
+  const [isRoutesStale, setIsRoutesStale] = useState<boolean>(false);
+  const [showRoutes, setShowRoutes] = useState<boolean>(true);
+
   // Campus selection change handler
   const handleSelectCampus = (newCampus: Campus) => {
     setSelectedCampus(newCampus);
@@ -55,6 +63,9 @@ export default function App() {
     setSelectedLocationId(null);
     setPredictionError(null);
     setPredictionResult(null);
+    setRouteResult(null);
+    setRoutesError(null);
+    setIsRoutesStale(false);
     setStep1Completed(false);
   };
 
@@ -80,6 +91,7 @@ export default function App() {
       prev.map((loc) => (loc.id === updatedLocation.id ? { ...loc, ...updatedLocation } : loc))
     );
     if (predictionError) setPredictionError(null);
+    if (routeResult) setIsRoutesStale(true);
   };
 
   // Unselect location: removes from active event plan, while preserving the created location on campus map
@@ -94,6 +106,7 @@ export default function App() {
       setSelectedLocationId(null);
     }
     if (predictionError) setPredictionError(null);
+    if (routeResult) setIsRoutesStale(true);
   };
 
   // Add a newly created custom location from drawing / map modal
@@ -110,6 +123,7 @@ export default function App() {
     });
     setSelectedLocationId(newLocation.id);
     if (predictionError) setPredictionError(null);
+    if (routeResult) setIsRoutesStale(true);
   };
 
   // Select / reselect a location (either already in active event or previously unselected)
@@ -194,6 +208,33 @@ export default function App() {
     }
   };
 
+  // Trigger pedestrian routes calculation
+  const handleCalculateRoutes = async () => {
+    if (!selectedCampus) return;
+    if (locations.length === 0) {
+      setRoutesError('At least one configured location is required to calculate pedestrian routes.');
+      return;
+    }
+
+    setIsCalculatingRoutes(true);
+    setRoutesError(null);
+
+    try {
+      const result = await planCampusRoutes({
+        campus: activeCampusWithLocations || selectedCampus,
+        locations,
+        maxSnapDistanceM: 50.0,
+      });
+      setRouteResult(result);
+      setIsRoutesStale(false);
+      setShowRoutes(true);
+    } catch (err: any) {
+      setRoutesError(err.message || 'Failed to calculate pedestrian routes.');
+    } finally {
+      setIsCalculatingRoutes(false);
+    }
+  };
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans">
       {/* Top Persistent Navbar with Step Indicator */}
@@ -204,6 +245,9 @@ export default function App() {
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);
+          setRouteResult(null);
+          setRoutesError(null);
+          setIsRoutesStale(false);
         }}
       />
 
@@ -231,6 +275,13 @@ export default function App() {
             onTriggerPlan={handleTriggerPlan}
             isPredicting={isPredicting}
             predictionError={predictionError}
+            routeResult={routeResult}
+            isCalculatingRoutes={isCalculatingRoutes}
+            routesError={routesError}
+            isRoutesStale={isRoutesStale}
+            showRoutes={showRoutes}
+            onToggleShowRoutes={setShowRoutes}
+            onCalculateRoutes={handleCalculateRoutes}
           />
         )}
       </main>

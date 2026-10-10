@@ -8,8 +8,9 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  Route,
 } from 'lucide-react';
-import { Campus, CampusLocation, EventDetails, ActivityType } from '../../types/bunbetsu';
+import { Campus, CampusLocation, EventDetails, ActivityType, RoutePlanResult } from '../../types/bunbetsu';
 import { ACTIVITIES, ActivityIcon } from '../../constants/activities';
 import { CampusMap } from '../Map/CampusMap';
 
@@ -26,6 +27,13 @@ interface EventConfigurationProps {
   onTriggerPlan: () => void;
   isPredicting?: boolean;
   predictionError?: string | null;
+  routeResult?: RoutePlanResult | null;
+  isCalculatingRoutes?: boolean;
+  routesError?: string | null;
+  isRoutesStale?: boolean;
+  showRoutes?: boolean;
+  onToggleShowRoutes?: (show: boolean) => void;
+  onCalculateRoutes?: () => void;
 }
 
 export const EventConfiguration: React.FC<EventConfigurationProps> = ({
@@ -41,6 +49,13 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
   onTriggerPlan,
   isPredicting = false,
   predictionError = null,
+  routeResult = null,
+  isCalculatingRoutes = false,
+  routesError = null,
+  isRoutesStale = false,
+  showRoutes = true,
+  onToggleShowRoutes,
+  onCalculateRoutes,
 }) => {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [editingLocId, setEditingLocId] = useState<string | null>(null);
@@ -132,6 +147,10 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
             showToolbar={true}
             showLegend={true}
             heightClass="h-full w-full"
+            routeResult={routeResult}
+            showRoutes={showRoutes}
+            onToggleShowRoutes={onToggleShowRoutes}
+            isRoutesStale={isRoutesStale}
           />
         </div>
 
@@ -378,6 +397,92 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                   );
                 })}
               </div>
+            </div>
+
+            {/* Section 3: Pedestrian Routes */}
+            <div className="space-y-3 pt-3.5 border-t border-[#E1E8DE]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Route className="w-3.5 h-3.5 text-[#004B20]" />
+                  <span className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
+                    Pedestrian Routes
+                  </span>
+                </div>
+                {routeResult && (
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      isRoutesStale
+                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : 'bg-[#EAF5E6] text-[#004B20] border border-[#70D000]/30'
+                    }`}
+                  >
+                    {isRoutesStale ? 'Out of Date' : 'Connected'}
+                  </span>
+                )}
+              </div>
+
+              {routesError && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
+                  <p className="leading-snug font-medium text-[11px]">{routesError}</p>
+                </div>
+              )}
+
+              {routeResult && (
+                <div className="p-2.5 bg-[#F7F9F5] rounded-lg border border-[#E1E8DE] space-y-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-[#667267] block">Mapped Paths:</span>
+                      <strong className="text-[#202820]">
+                        {(routeResult.diagnostics.graph.total_length_m / 1000).toFixed(2)} km
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[#667267] block">Connected Pairs:</span>
+                      <strong className="text-[#202820]">
+                        {routeResult.diagnostics.scoring.connected_pairs} of{' '}
+                        {routeResult.diagnostics.scoring.evaluated_pairs}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {routeResult.warnings && routeResult.warnings.length > 0 && (
+                    <div className="pt-1 border-t border-[#E1E8DE] text-[10px] text-amber-700 space-y-0.5">
+                      {routeResult.warnings.map((w, idx) => (
+                        <div key={idx} className="flex items-start gap-1">
+                          <span className="font-bold">•</span>
+                          <span>{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onCalculateRoutes}
+                disabled={isCalculatingRoutes || locations.length === 0}
+                className="w-full py-2.5 px-3 bg-white hover:bg-[#F7F9F5] active:bg-[#EAF5E6] disabled:opacity-50 text-[#004B20] border border-[#004B20]/40 hover:border-[#004B20] font-bold text-xs rounded-lg flex items-center justify-center gap-2 shadow-2xs transition-all cursor-pointer font-sans"
+              >
+                {isCalculatingRoutes ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#004B20]" />
+                    <span>Acquiring & Scoring OSM Routes...</span>
+                  </>
+                ) : (
+                  <>
+                    <Route className="w-3.5 h-3.5 text-[#004B20]" />
+                    <span>
+                      {routeResult
+                        ? isRoutesStale
+                          ? 'Recalculate Routes (Stale)'
+                          : 'Recalculate Routes'
+                        : 'Calculate Pedestrian Routes'}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 

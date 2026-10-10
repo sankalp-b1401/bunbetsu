@@ -2,11 +2,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Feature, FeatureCollection } from 'geojson';
 import { Plus, Minus, Navigation, ShieldCheck, Check, X } from 'lucide-react';
-import { Campus, CampusLocation, ActivityType } from '../../types/bunbetsu';
+import { Campus, CampusLocation, ActivityType, RoutePlanResult } from '../../types/bunbetsu';
 import { ACTIVITIES, ActivityIcon } from '../../constants/activities';
 import { calculatePolygonAreaM2, getPolygonCenter } from '../../utils/geoUtils';
 import { ActivityLegend } from './ActivityLegend';
 import { MapToolbar } from './MapToolbar';
+import { RouteLegend } from './RouteLegend';
 
 // Ensure MapLibre Web Worker resolves correctly in Vite / Cloud Run environments
 if (typeof window !== 'undefined') {
@@ -46,6 +47,10 @@ interface CampusMapProps {
   flatCorners?: boolean;
   recenterTrigger?: number;
   userLocation?: [number, number] | null;
+  routeResult?: RoutePlanResult | null;
+  showRoutes?: boolean;
+  onToggleShowRoutes?: (show: boolean) => void;
+  isRoutesStale?: boolean;
 }
 
 export const CampusMap: React.FC<CampusMapProps> = ({
@@ -67,6 +72,10 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   flatCorners = false,
   recenterTrigger,
   userLocation = null,
+  routeResult = null,
+  showRoutes = true,
+  onToggleShowRoutes,
+  isRoutesStale = false,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -586,9 +595,217 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       }
     }
 
-    // 3. Render HTML Markers on map
+    // 3. Update Pedestrian Route Layers
+    updateRouteLayers(map);
+
+    // 4. Render HTML Markers on map
     renderMarkers(map);
   };
+
+  // Update Pedestrian Route Layers
+  const updateRouteLayers = (map: maplibregl.Map) => {
+    const emptyFC: FeatureCollection = { type: 'FeatureCollection', features: [] };
+    const pathsData = routeResult && showRoutes ? routeResult.paths_geojson : emptyFC;
+    const connectorsData = routeResult && showRoutes ? routeResult.connectors_geojson : emptyFC;
+    const intersectionsData =
+      routeResult && showRoutes && routeResult.intersections_geojson
+        ? routeResult.intersections_geojson
+        : emptyFC;
+
+    // 1. Paths Source & Layers
+    if (map.getSource('route-paths-src')) {
+      (map.getSource('route-paths-src') as maplibregl.GeoJSONSource).setData(pathsData as any);
+    } else {
+      map.addSource('route-paths-src', {
+        type: 'geojson',
+        data: pathsData as any,
+      });
+
+      map.addLayer({
+        id: 'route-paths-casing',
+        type: 'line',
+        source: 'route-paths-src',
+        layout: {
+          visibility: showRoutes ? 'visible' : 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#0F172A',
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13, 3.0,
+            16, 5.5,
+            18, 8.0,
+          ],
+          'line-opacity': 0.4,
+        },
+      });
+
+      map.addLayer({
+        id: 'route-paths-line',
+        type: 'line',
+        source: 'route-paths-src',
+        layout: {
+          visibility: showRoutes ? 'visible' : 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'normalized_score'],
+            0.0, '#94A3B8',
+            0.2, '#38BDF8',
+            0.4, '#10B981',
+            0.65, '#F59E0B',
+            0.85, '#EA580C',
+            1.0, '#DC2626',
+          ],
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13, ['interpolate', ['linear'], ['get', 'normalized_score'], 0, 1.8, 1, 3.5],
+            16, ['interpolate', ['linear'], ['get', 'normalized_score'], 0, 3.2, 1, 6.0],
+            18, ['interpolate', ['linear'], ['get', 'normalized_score'], 0, 4.8, 1, 9.0],
+          ],
+          'line-opacity': 0.95,
+        },
+      });
+
+      const popup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 10,
+      });
+
+      map.on('mouseenter', 'route-paths-line', (e) => {
+        if (currentModeRef.current === 'addArea') return;
+        map.getCanvas().style.cursor = 'pointer';
+        if (!e.features || !e.features[0]) return;
+        const props = e.features[0].properties as any;
+        const score = Number(props.normalized_score || 0).toFixed(2);
+        const len = Math.round(props.length_m || 0);
+        const hw = props.highway || 'path';
+
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="padding: 4px; font-family: sans-serif; font-size: 11px;">
+              <div style="font-weight: bold; color: #202820; display: flex; justify-content: space-between; gap: 8px;">
+                <span>Pedestrian Path</span>
+                <span style="color: #004B20; background: #EAF5E6; padding: 1px 4px; border-radius: 4px;">Score: ${score}</span>
+              </div>
+              <div style="color: #667267; margin-top: 3px;">
+                <div>Length: <strong>${len} m</strong></div>
+                <div style="text-transform: capitalize;">Type: ${hw}</div>
+              </div>
+            </div>
+          `)
+          .addTo(map);
+      });
+
+      map.on('mouseleave', 'route-paths-line', () => {
+        if (currentModeRef.current !== 'addArea') {
+          map.getCanvas().style.cursor = '';
+        }
+        popup.remove();
+      });
+    }
+
+    // 2. Connectors Source & Layer
+    if (map.getSource('route-connectors-src')) {
+      (map.getSource('route-connectors-src') as maplibregl.GeoJSONSource).setData(connectorsData as any);
+    } else {
+      map.addSource('route-connectors-src', {
+        type: 'geojson',
+        data: connectorsData as any,
+      });
+
+      map.addLayer({
+        id: 'route-connectors-line',
+        type: 'line',
+        source: 'route-connectors-src',
+        layout: {
+          visibility: showRoutes ? 'visible' : 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'status'], 'flagged'],
+            '#D97706',
+            '#8B5CF6',
+          ],
+          'line-width': 2.8,
+          'line-dasharray': [3, 2],
+          'line-opacity': 0.9,
+        },
+      });
+    }
+
+    // 3. Intersections Source & Layer
+    if (map.getSource('route-intersections-src')) {
+      (map.getSource('route-intersections-src') as maplibregl.GeoJSONSource).setData(intersectionsData as any);
+    } else {
+      map.addSource('route-intersections-src', {
+        type: 'geojson',
+        data: intersectionsData as any,
+      });
+
+      map.addLayer({
+        id: 'route-intersections-circle',
+        type: 'circle',
+        source: 'route-intersections-src',
+        layout: {
+          visibility: showRoutes ? 'visible' : 'none',
+        },
+        paint: {
+          'circle-radius': [
+            'interpolate',
+            ['linear'],
+            ['get', 'traffic_score'],
+            0, 2.5,
+            5, 5.0,
+            15, 7.5,
+          ],
+          'circle-color': '#EF4444',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#FFFFFF',
+          'circle-opacity': 0.85,
+        },
+      });
+    }
+
+    // Toggle layer visibility
+    if (map.getLayer('route-paths-casing')) {
+      map.setLayoutProperty('route-paths-casing', 'visibility', showRoutes ? 'visible' : 'none');
+    }
+    if (map.getLayer('route-paths-line')) {
+      map.setLayoutProperty('route-paths-line', 'visibility', showRoutes ? 'visible' : 'none');
+    }
+    if (map.getLayer('route-connectors-line')) {
+      map.setLayoutProperty('route-connectors-line', 'visibility', showRoutes ? 'visible' : 'none');
+    }
+    if (map.getLayer('route-intersections-circle')) {
+      map.setLayoutProperty('route-intersections-circle', 'visibility', showRoutes ? 'visible' : 'none');
+    }
+  };
+
+  // Sync route layers when routeResult or showRoutes changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (map.isStyleLoaded()) {
+      updateRouteLayers(map);
+    }
+  }, [routeResult, showRoutes]);
+
 
   // Sync layers when locations or selection changes
   useEffect(() => {
@@ -1102,7 +1319,18 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           <MapToolbar
             currentMode={currentMode}
             onModeChange={setCurrentMode}
+            hasRoutes={Boolean(routeResult)}
+            showRoutes={showRoutes}
+            onToggleRoutes={onToggleShowRoutes}
+            isRoutesStale={isRoutesStale}
           />
+        </div>
+      )}
+
+      {/* Route Popularity Legend */}
+      {showRoutes && routeResult && (routeResult.paths_geojson?.features?.length > 0 || routeResult.connectors_geojson?.features?.length > 0) && (
+        <div className="absolute top-14 left-3 z-10">
+          <RouteLegend routeResult={routeResult} isStale={isRoutesStale} />
         </div>
       )}
 
