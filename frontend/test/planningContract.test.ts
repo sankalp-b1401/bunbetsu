@@ -177,6 +177,7 @@ async function runPlanningContractTests() {
           total_bins: 18,
           capacity_bins: { low: 10, central: 14, high: 18 },
           recommended_bins: { low: 14, central: 18, high: 22 },
+          required_emptying_turns: { low: 1, central: 1, high: 2 },
           stream_counts: null,
           stream_breakdown_available: false,
           locations: [
@@ -186,11 +187,16 @@ async function runPlanningContractTests() {
               area: 1500,
               activities: ['Music Concert'],
               capacity_bins: { low: 5, central: 8, high: 10 },
-              spatial_minimum_bins: 0,
+              rectangle_perimeter_m: 160.0,
+              perimeter_spacing_max_bins: 6,
               perimeter_spacing_minimum_bins: 6,
               recommended_bins: { low: 8, central: 10, high: 12 },
+              required_emptying_turns: { low: 1, central: 1, high: 2 },
+              daily_capacity_coverage_litres: 800.0,
+              capacity_shortfall_litres: 0.0,
+              spatial_minimum_bins: 0,
               placement_scenario: 'central',
-              boundary_spacing_target_m: 30.0,
+              boundary_spacing_target_m: 25.0,
               actual_boundary_spacing_m: 24.5,
               boundary_inset_m: 1.5,
               placement_warnings: [],
@@ -221,11 +227,10 @@ async function runPlanningContractTests() {
           ],
           bin_capacity_litres: 100.0,
           usable_fill_fraction: 0.80,
-          emptying_cycles_per_day: 2,
-          effective_capacity_litres_per_bin_per_day: 160.0,
-          boundary_spacing_target_m: 30.0,
+          usable_bin_capacity_litres: 80.0,
+          boundary_spacing_target_m: 25.0,
           boundary_inset_m: 1.5,
-          assumptions: ['100L capacity', '160 L/day effective'],
+          assumptions: ['100L capacity', '80L usable capacity per turn', '25m perimeter spacing policy'],
           warnings: [],
         },
         routes: {
@@ -272,7 +277,10 @@ async function runPlanningContractTests() {
   assert(planResult.binRecommendations?.streamBreakdownAvailable === false, 'Stream breakdown must be flagged as unavailable');
   assert(planResult.binRecommendations?.streamCounts === null, 'streamCounts must be null when unavailable');
   assert(planResult.binRecommendations?.binCapacityLitres === 100.0, 'Bin capacity constant must be 100L');
-  assert(planResult.binRecommendations?.effectiveCapacityLitresPerBinPerDay === 160.0, 'Effective capacity must be 160 L/day');
+  assert(planResult.binRecommendations?.usableBinCapacityLitres === 80.0, 'Usable bin capacity must be 80L');
+  assert(planResult.binRecommendations?.boundarySpacingTargetM === 25.0, 'Boundary spacing target must be 25m');
+  assert(planResult.binRecommendations?.requiredEmptyingTurns?.central === 1, 'Required turns must be serialized');
+  assert(planResult.binRecommendations?.locations?.[0].perimeter_spacing_max_bins === 6, 'Perimeter spacing max bins preserved');
   assert(planResult.routeResult !== null, 'Result must contain routeResult');
   assert(planResult.diagnostics.stage_status.prediction === 'success', 'Prediction stage status must be success');
   assert(planResult.diagnostics.stage_status.bins === 'success', 'Bins stage status must be success');
@@ -350,9 +358,8 @@ async function runPlanningContractTests() {
         bins: [],
         bin_capacity_litres: 100.0,
         usable_fill_fraction: 0.80,
-        emptying_cycles_per_day: 2,
-        effective_capacity_litres_per_bin_per_day: 160.0,
-        boundary_spacing_target_m: 30.0,
+        usable_bin_capacity_litres: 80.0,
+        boundary_spacing_target_m: 25.0,
         boundary_inset_m: 1.5,
         assumptions: [],
         warnings: [],
@@ -415,9 +422,8 @@ async function runPlanningContractTests() {
         bins: [],
         bin_capacity_litres: 100.0,
         usable_fill_fraction: 0.80,
-        emptying_cycles_per_day: 2,
-        effective_capacity_litres_per_bin_per_day: 160.0,
-        boundary_spacing_target_m: 30.0,
+        usable_bin_capacity_litres: 80.0,
+        boundary_spacing_target_m: 25.0,
         boundary_inset_m: 1.5,
         assumptions: [],
         warnings: ['Bin distribution model produced no valid placements across configured locations.'],

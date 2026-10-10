@@ -1,6 +1,6 @@
 import React from 'react';
 import { BinRecommendationResult, LocationWasteAllocation } from '../../types/bunbetsu';
-import { Trash2, Recycle, Info, ShieldAlert } from 'lucide-react';
+import { Trash2, Recycle, Info, ShieldAlert, RotateCw, AlertTriangle } from 'lucide-react';
 
 export interface BinRecommendationsPanelProps {
   binRecommendations?: BinRecommendationResult | null;
@@ -62,21 +62,34 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     );
   }
 
+  const locations = binRecommendations?.locations || [];
+  const peakTurns =
+    binRecommendations?.requiredEmptyingTurns?.central ??
+    (locations.length > 0
+      ? Math.max(...locations.map((l) => l.required_emptying_turns?.central ?? 1))
+      : 1);
+
+  const capacityDemand =
+    binRecommendations?.capacityBins?.central ??
+    locations.reduce((sum, l) => sum + (l.capacity_bins?.central ?? 0), 0);
+
+  const totalShortfall = Math.round(
+    locations.reduce((sum, l) => sum + (l.capacity_shortfall_litres ?? 0), 0)
+  );
+
+  const zeroCapacityCount = locations.filter(
+    (l) =>
+      (l.perimeter_spacing_max_bins === 0 || l.recommended_bins?.central === 0) &&
+      (l.capacity_bins?.central ?? 0) > 0
+  ).length;
+
   const hasBreakdown = Boolean(
     binRecommendations?.streamBreakdownAvailable && binRecommendations?.streamCounts
   );
-
   const recyclableBins = hasBreakdown ? (binRecommendations?.streamCounts?.recyclable ?? null) : null;
   const disposableBins = hasBreakdown
-    ? ((binRecommendations?.streamCounts?.general ?? 0) + (binRecommendations?.streamCounts?.food ?? 0))
+    ? (binRecommendations?.streamCounts?.general ?? 0) + (binRecommendations?.streamCounts?.food ?? 0)
     : null;
-
-  const safeTotal =
-    (recyclableBins !== null && disposableBins !== null ? recyclableBins + disposableBins : null) ||
-    totalBins ||
-    1;
-  const recyclablePct = recyclableBins !== null ? Math.round((recyclableBins / safeTotal) * 100) : null;
-  const disposablePct = disposableBins !== null ? Math.round((disposableBins / safeTotal) * 100) : null;
 
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
@@ -89,7 +102,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
           </h3>
           <span
             className="text-[#667267] hover:text-[#202820] cursor-help"
-            title="Sized using 100L bins (80L usable capacity, 2 emptying cycles/day = 160 L/day effective capacity) and 30m perimeter spacing guideline."
+            title="Physical bin count is limited by a 25 m perimeter spacing policy. When waste demand exceeds the available bin capacity, the model estimates the required emptying turns. Actual placement and capacity coverage may vary by location."
           >
             <Info className="w-3.5 h-3.5" />
           </span>
@@ -105,61 +118,79 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </span>
       </div>
 
-      {/* Main Body: 2 compact visual tiles */}
+      {/* Main Body: Physical Bins & Variable Emptying Turns Tiles */}
       <div className="flex flex-col gap-2 my-auto py-1">
-        {/* Recyclable Bins Tile (Bunbetsu Green + Recycle icon) */}
+        {/* Tile 1: Physical Recommended Bins (25m spacing policy) */}
         <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 space-y-1">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-emerald-700">
-              <Recycle className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-xs font-bold">Recyclable</span>
+            <div className="flex items-center gap-1.5 text-emerald-800">
+              <Trash2 className="w-3.5 h-3.5 shrink-0 text-[#004B20]" />
+              <span className="text-xs font-bold">Physical Bins</span>
             </div>
-            {hasBreakdown && recyclablePct !== null ? (
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/50">
-                {recyclablePct}%
-              </span>
-            ) : (
-              <span className="text-[9px] font-medium text-[#667267] bg-[#F4F6F2] px-1.5 py-0.5 rounded border border-[#E1E8DE]">
-                Unavailable
-              </span>
-            )}
+            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/60">
+              25 m spacing
+            </span>
           </div>
           <div className="flex items-baseline justify-between pt-0.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-              {hasBreakdown && recyclableBins !== null ? recyclableBins : '—'}
+              {totalBins}
             </span>
-            <span className="text-[10px] sm:text-[11px] text-[#667267] font-medium">
-              bins
+            <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+              {capacityDemand > totalBins ? `${capacityDemand} capacity demand` : 'placement bins'}
             </span>
           </div>
         </div>
 
-        {/* Disposable Bins Tile (Bunbetsu Blue + Trash2 icon) */}
+        {/* Tile 2: Variable Emptying Turns Required */}
         <div className="p-2 sm:p-2.5 bg-blue-50/50 rounded-xl border border-blue-200/70 space-y-1">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-blue-700">
-              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-xs font-bold">Disposable</span>
+            <div className="flex items-center gap-1.5 text-blue-800">
+              <RotateCw className="w-3.5 h-3.5 shrink-0 text-blue-700" />
+              <span className="text-xs font-bold">Emptying Turns</span>
             </div>
-            {hasBreakdown && disposablePct !== null ? (
-              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/50">
-                {disposablePct}%
-              </span>
-            ) : (
-              <span className="text-[9px] font-medium text-[#667267] bg-[#F4F6F2] px-1.5 py-0.5 rounded border border-[#E1E8DE]">
-                Unavailable
-              </span>
-            )}
+            <span className="text-[9px] font-bold text-blue-800 bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-300/60">
+              Dynamic
+            </span>
           </div>
           <div className="flex items-baseline justify-between pt-0.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-              {hasBreakdown && disposableBins !== null ? disposableBins : '—'}
+              {peakTurns}×
             </span>
-            <span className="text-[10px] sm:text-[11px] text-[#667267] font-medium">
-              bins
+            <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+              turn{peakTurns === 1 ? '' : 's'} / bin / day
             </span>
           </div>
         </div>
+
+        {/* Stream Breakdown Status Note */}
+        <div className="flex items-center justify-between px-2 py-1 bg-[#F7F9F5] rounded-lg border border-[#E1E8DE] text-[10px] text-[#667267]">
+          <span className="flex items-center gap-1">
+            <Recycle className="w-3 h-3 text-[#667267]" />
+            Stream breakdown
+          </span>
+          <span className="font-medium">
+            {hasBreakdown && recyclableBins !== null ? `${recyclableBins}R / ${disposableBins}D` : 'Unavailable'}
+          </span>
+        </div>
+
+        {/* Diagnostic Warnings */}
+        {totalShortfall > 0 && (
+          <div className="flex items-start gap-1.5 p-1.5 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 text-[10px] leading-tight">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600 mt-0.5" />
+            <span>
+              Turn rounding leaves ~{totalShortfall} L daily capacity shortfall. Consider additional collection rounds.
+            </span>
+          </div>
+        )}
+
+        {zeroCapacityCount > 0 && (
+          <div className="flex items-start gap-1.5 p-1.5 bg-rose-50 rounded-lg border border-rose-200 text-rose-800 text-[10px] leading-tight">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600 mt-0.5" />
+            <span>
+              {zeroCapacityCount} zone{zeroCapacityCount === 1 ? '' : 's'} cannot fit bins under 25 m perimeter spacing.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

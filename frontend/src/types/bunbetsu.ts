@@ -353,9 +353,14 @@ export interface LocationBinRecommendationItem {
   area: number;
   activities: string[];
   capacity_bins: RangeModel;
-  spatial_minimum_bins: number;
-  perimeter_spacing_minimum_bins: number;
+  rectangle_perimeter_m: number;
+  perimeter_spacing_max_bins: number;
+  perimeter_spacing_minimum_bins?: number;
   recommended_bins: RangeModel;
+  required_emptying_turns: RangeModel;
+  daily_capacity_coverage_litres: number;
+  capacity_shortfall_litres: number;
+  spatial_minimum_bins: number;
   placement_scenario: string;
   boundary_spacing_target_m: number;
   actual_boundary_spacing_m: number;
@@ -370,6 +375,7 @@ export interface BinRecommendationResult {
   totalBins: number;
   capacityBins?: RangeModel;
   recommendedBins?: RangeModel;
+  requiredEmptyingTurns?: RangeModel;
   streamCounts: {
     general: number;
     recyclable: number;
@@ -381,8 +387,9 @@ export interface BinRecommendationResult {
   metadata?: Record<string, any>;
   binCapacityLitres?: number;
   usableFillFraction?: number;
-  emptyingCyclesPerDay?: number;
-  effectiveCapacityLitresPerBinPerDay?: number;
+  usableBinCapacityLitres?: number;
+  emptyingCyclesPerDay?: number | null;
+  effectiveCapacityLitresPerBinPerDay?: number | null;
   boundarySpacingTargetM?: number;
   boundaryInsetM?: number;
   assumptions?: string[];
@@ -435,6 +442,7 @@ export interface BackendCampusPlanResponse {
     total_bins: number;
     capacity_bins: RangeModel;
     recommended_bins: RangeModel;
+    required_emptying_turns?: RangeModel;
     stream_counts: Record<string, number> | null;
     stream_breakdown_available: boolean;
     locations: Array<{
@@ -443,9 +451,14 @@ export interface BackendCampusPlanResponse {
       area: number;
       activities: string[];
       capacity_bins: RangeModel;
-      spatial_minimum_bins: number;
-      perimeter_spacing_minimum_bins: number;
+      rectangle_perimeter_m?: number;
+      perimeter_spacing_max_bins?: number;
+      perimeter_spacing_minimum_bins?: number;
       recommended_bins: RangeModel;
+      required_emptying_turns?: RangeModel;
+      daily_capacity_coverage_litres?: number;
+      capacity_shortfall_litres?: number;
+      spatial_minimum_bins: number;
       placement_scenario: string;
       boundary_spacing_target_m: number;
       actual_boundary_spacing_m: number;
@@ -473,8 +486,9 @@ export interface BackendCampusPlanResponse {
     }>;
     bin_capacity_litres: number;
     usable_fill_fraction: number;
-    emptying_cycles_per_day: number;
-    effective_capacity_litres_per_bin_per_day: number;
+    usable_bin_capacity_litres?: number;
+    emptying_cycles_per_day?: number | null;
+    effective_capacity_litres_per_bin_per_day?: number | null;
     boundary_spacing_target_m: number;
     boundary_inset_m: number;
     assumptions: string[];

@@ -2,18 +2,21 @@
 
 The existing waste predictor remains unchanged. This module:
 1. converts predicted category mass to estimated litres,
-2. estimates average daily bin capacity requirements,
-3. enforces a configurable perimeter spacing guideline, and
-4. returns bin coordinates sampled on an inward-offset version of each
+2. calculates capacity-only bin demand based on usable bin capacity (80 L per 100 L bin),
+3. calculates the approximate best-fit rectangle perimeter (minimum rotated rectangle) in projected metres,
+4. enforces a 25 m minimum spacing policy bounding physical bin placement (M = floor(P / 25)),
+5. calculates dynamic emptying turns when waste demand exceeds physical perimeter capacity,
+6. exposes capacity coverage and shortfall diagnostics, and
+7. returns bin coordinates sampled on an inward-offset version of each
    location polygon's exterior boundary.
 
 Input geometry is GeoJSON in WGS84 [longitude, latitude] order, matching
 MapLibre and the frontend CampusLocation.geometry shape.
 
 Spacing note:
-A 30 m interval is an initial planning guideline for active public spaces,
-not a universal statutory standard. Local event conditions and accessibility
-must be reviewed before deployment.
+A 25 m interval is Bunbetsu's configured planning policy, not a universal statutory
+standard. Local event conditions, accessibility, emergency paths, and operational
+collection feasibility must be reviewed before deployment.
 """
 
 from __future__ import annotations
@@ -35,10 +38,11 @@ from models.waste_predictor_model.waste_predictor_model import (
 
 BIN_CAPACITY_LITRES = 100.0
 USABLE_FILL_FRACTION = 0.80
-EMPTYING_CYCLES_PER_DAY = 2
-EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY = (
-    BIN_CAPACITY_LITRES * USABLE_FILL_FRACTION * EMPTYING_CYCLES_PER_DAY
-)
+USABLE_BIN_CAPACITY_LITRES = BIN_CAPACITY_LITRES * USABLE_FILL_FRACTION  # 80.0 L
+
+# Backward compatibility alias
+EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY = USABLE_BIN_CAPACITY_LITRES
+EMPTYING_CYCLES_PER_DAY = 1
 
 WASTE_DENSITY_KG_PER_M3: dict[str, float] = {
     "Food": 290.0,
@@ -49,10 +53,15 @@ WASTE_DENSITY_KG_PER_M3: dict[str, float] = {
     "Others": 240.0,
 }
 
-# Initial planning defaults; override for the venue/event if needed.
-DEFAULT_BOUNDARY_SPACING_M = 30.0
+# Configured planning defaults; override for the venue/event if needed.
+DEFAULT_BOUNDARY_SPACING_M = 25.0
 DEFAULT_BOUNDARY_INSET_M = 1.5
 DEFAULT_CLOSE_SPACING_WARNING_M = 3.0
+
+
+def round_half_up(value: float) -> int:
+    """Conventional half-up rounding (ties with fractional part >= 0.5 round up)."""
+    return math.floor(value + 0.5)
 
 
 @dataclass(frozen=True)
@@ -92,15 +101,24 @@ class LocationBinPrediction:
     volume_litres_per_day_central: float
     volume_litres_per_day_high: float
     capacity_bins: BinCountRange
-    spatial_minimum_bins: int
-    perimeter_spacing_minimum_bins: int
+    rectangle_perimeter_m: float
+    perimeter_spacing_max_bins: int
     recommended_bins: BinCountRange
+    required_emptying_turns: BinCountRange
+    daily_capacity_coverage_litres: float
+    capacity_shortfall_litres: float
     bin_placements: tuple[BinPlacement, ...]
     placement_scenario: str
     boundary_spacing_target_m: float
     actual_boundary_spacing_m: float
     boundary_inset_m: float
     placement_warnings: tuple[str, ...]
+    spatial_minimum_bins: int = 0
+
+    @property
+    def perimeter_spacing_minimum_bins(self) -> int:
+        """Deprecated alias: perimeter spacing now defines an upper bound (max bins)."""
+        return self.perimeter_spacing_max_bins
 
 
 @dataclass(frozen=True)
@@ -108,12 +126,21 @@ class OnLocationBinPrediction:
     locations: tuple[LocationBinPrediction, ...]
     bin_capacity_litres: float
     usable_fill_fraction: float
-    emptying_cycles_per_day: int
-    effective_capacity_litres_per_bin_per_day: float
-    density_kg_per_m3: dict[str, float]
+    usable_bin_capacity_litres: float
     boundary_spacing_target_m: float
     boundary_inset_m: float
+    density_kg_per_m3: dict[str, float]
     assumptions: tuple[str, ...]
+
+    @property
+    def emptying_cycles_per_day(self) -> int:
+        """Deprecated alias: returns peak central emptying turns across locations."""
+        return max((loc.required_emptying_turns.central for loc in self.locations), default=1)
+
+    @property
+    def effective_capacity_litres_per_bin_per_day(self) -> float:
+        """Deprecated alias: replaced by usable_bin_capacity_litres."""
+        return self.usable_bin_capacity_litres
 
 
 def _validate_density_map(densities: Mapping[str, float]) -> None:
@@ -154,18 +181,21 @@ def volume_litres_from_mass_kg(
 
 def bins_for_daily_volume(
     volume_litres_per_day: float,
-    effective_capacity_litres_per_bin_per_day: float = EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY,
+    usable_bin_capacity_litres: float = USABLE_BIN_CAPACITY_LITRES,
+    **kwargs: Any,
 ) -> int:
-    """Return the minimum integer bin count for an estimated daily volume."""
+    """Return the minimum integer bin count for an estimated daily volume ignoring turns."""
+    if "effective_capacity_litres_per_bin_per_day" in kwargs:
+        usable_bin_capacity_litres = float(kwargs["effective_capacity_litres_per_bin_per_day"])
     if not math.isfinite(float(volume_litres_per_day)) or volume_litres_per_day < 0:
         raise ValueError("Daily volume must be finite and non-negative.")
     if (
-        not math.isfinite(float(effective_capacity_litres_per_bin_per_day))
-        or effective_capacity_litres_per_bin_per_day <= 0
+        not math.isfinite(float(usable_bin_capacity_litres))
+        or usable_bin_capacity_litres <= 0
     ):
-        raise ValueError("Effective bin capacity must be finite and positive.")
+        raise ValueError("Usable bin capacity must be finite and positive.")
     return 0 if volume_litres_per_day == 0 else math.ceil(
-        volume_litres_per_day / effective_capacity_litres_per_bin_per_day
+        volume_litres_per_day / usable_bin_capacity_litres
     )
 
 
@@ -340,9 +370,30 @@ def _make_location_prediction(
     original_wgs84 = _to_shape(geometry, allocation.location_name)
     forward, inverse = _local_transformers(original_wgs84)
     polygon_m = transform(forward.transform, original_wgs84)
-    lines, actual_inset = _inset_exterior_lines(polygon_m, boundary_inset_m)
-    perimeter_m = sum(line.length for line in lines)
-    perimeter_minimum = max(1, math.ceil(perimeter_m / boundary_spacing_m))
+
+    # Calculate approximate best-fit rectangle perimeter using minimum rotated rectangle.
+    # For MultiPolygons, compute the minimum rotated rectangle of each component and sum
+    # their perimeters. This prevents treating empty space between disconnected components
+    # as a usable placement boundary.
+    if isinstance(polygon_m, Polygon):
+        best_fit_rectangle = polygon_m.minimum_rotated_rectangle
+        rectangle_perimeter_m = float(best_fit_rectangle.length)
+    elif isinstance(polygon_m, MultiPolygon):
+        rectangle_perimeter_m = float(
+            sum(poly.minimum_rotated_rectangle.length for poly in polygon_m.geoms)
+        )
+    else:
+        raise ValueError(
+            f"Location {allocation.location_name!r} has unsupported geometry type {type(polygon_m)}."
+        )
+
+    if not math.isfinite(rectangle_perimeter_m) or rectangle_perimeter_m <= 0:
+        raise ValueError(
+            f"Location {allocation.location_name!r} produced invalid non-positive rectangle perimeter: {rectangle_perimeter_m}."
+        )
+
+    # Maximum physical bin count allowed under the boundary spacing policy: M = floor(P / d)
+    perimeter_spacing_max_bins = int(math.floor(rectangle_perimeter_m / boundary_spacing_m))
 
     mass_ranges = allocation.composition_kg
     total_volume_litres = {
@@ -352,10 +403,7 @@ def _make_location_prediction(
         )
         for endpoint in ("low", "central", "high")
     }
-    # The existing predictor returns location-wise totals over the full event.
-    # Bin sizing is based on average daily demand, so divide both the location's
-    # total mass and its derived total volume by the event duration before
-    # calculating capacity-based bin counts.
+    # Sizing is based on average daily demand over the event duration
     daily_volumes = {
         endpoint: value / duration_days
         for endpoint, value in total_volume_litres.items()
@@ -364,29 +412,89 @@ def _make_location_prediction(
         endpoint: getattr(allocation.total_waste_kg, endpoint) / duration_days
         for endpoint in ("low", "central", "high")
     }
+
+    # Capacity-only demand: N = ceil(daily_volume / usable_bin_capacity)
     capacity_counts = BinCountRange(
-        bins_for_daily_volume(daily_volumes["low"]),
-        bins_for_daily_volume(daily_volumes["central"]),
-        bins_for_daily_volume(daily_volumes["high"]),
+        bins_for_daily_volume(daily_volumes["low"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
+        bins_for_daily_volume(daily_volumes["central"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
+        bins_for_daily_volume(daily_volumes["high"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
     )
+
+    # Final physical bin count: physical_bins = min(demand, M) when M > 0, else 0
+    def _calc_physical_bins(demand: int, max_bins: int, min_override: int) -> int:
+        if demand == 0 or max_bins == 0:
+            return 0
+        desired = max(demand, min_override) if min_override > 0 else demand
+        return min(desired, max_bins)
+
     recommended_counts = BinCountRange(
-        max(capacity_counts.low, spatial_minimum_bins, perimeter_minimum),
-        max(capacity_counts.central, spatial_minimum_bins, perimeter_minimum),
-        max(capacity_counts.high, spatial_minimum_bins, perimeter_minimum),
+        _calc_physical_bins(capacity_counts.low, perimeter_spacing_max_bins, spatial_minimum_bins),
+        _calc_physical_bins(capacity_counts.central, perimeter_spacing_max_bins, spatial_minimum_bins),
+        _calc_physical_bins(capacity_counts.high, perimeter_spacing_max_bins, spatial_minimum_bins),
     )
     central_count = recommended_counts.central
 
-    placements, actual_spacing, _ = _sample_boundary(
-        lines=lines,
-        count=central_count,
-        inverse=inverse,
-        original_polygon_m=polygon_m,
-        original_polygon_wgs84=original_wgs84,
-        forward_transform=forward,
-        requested_inset_m=actual_inset,
+    # Variable emptying turns: turns = round_half_up(N / physical_bins) when N > M
+    def _calc_turns(demand: int, physical_bins: int, max_bins: int) -> int:
+        if demand == 0 or physical_bins == 0 or max_bins == 0:
+            return 0
+        if max_bins >= demand:
+            return 1
+        return max(1, round_half_up(demand / physical_bins))
+
+    required_turns = BinCountRange(
+        _calc_turns(capacity_counts.low, recommended_counts.low, perimeter_spacing_max_bins),
+        _calc_turns(capacity_counts.central, recommended_counts.central, perimeter_spacing_max_bins),
+        _calc_turns(capacity_counts.high, recommended_counts.high, perimeter_spacing_max_bins),
     )
+
+    # Daily capacity coverage & shortfall diagnostics (central scenario)
+    central_physical_bins = recommended_counts.central
+    central_turns = required_turns.central
+    available_daily_capacity_litres = (
+        central_physical_bins * USABLE_BIN_CAPACITY_LITRES * central_turns
+    )
+    central_volume = daily_volumes["central"]
+    capacity_shortfall_litres = max(0.0, central_volume - available_daily_capacity_litres)
+
+    lines, actual_inset = _inset_exterior_lines(polygon_m, boundary_inset_m)
+
+    if central_count > 0:
+        placements, actual_spacing, _ = _sample_boundary(
+            lines=lines,
+            count=central_count,
+            inverse=inverse,
+            original_polygon_m=polygon_m,
+            original_polygon_wgs84=original_wgs84,
+            forward_transform=forward,
+            requested_inset_m=actual_inset,
+        )
+    else:
+        placements = ()
+        actual_spacing = 0.0
+
     warnings: list[str] = []
-    if actual_spacing < close_spacing_warning_m:
+    if perimeter_spacing_max_bins == 0 and capacity_counts.central > 0:
+        warnings.append(
+            f"Location perimeter of {rectangle_perimeter_m:.1f} m cannot accommodate any bins under the "
+            f"{boundary_spacing_m:.1f} m spacing policy (maximum physical bins = 0). "
+            f"Daily waste demand ({central_volume:.1f} L) cannot be accommodated on-location."
+        )
+    elif capacity_counts.central > perimeter_spacing_max_bins:
+        warnings.append(
+            f"Waste demand requires {capacity_counts.central} bin capacity equivalents, exceeding physical "
+            f"perimeter capacity of {perimeter_spacing_max_bins} bin(s) under the {boundary_spacing_m:.1f} m spacing policy. "
+            f"{central_turns} emptying turn(s) per bin per day are required."
+        )
+
+    if capacity_shortfall_litres > 0.001:
+        warnings.append(
+            f"Emptying turn rounding leaves a daily capacity shortfall of {capacity_shortfall_litres:.1f} L "
+            f"(predicted daily volume: {central_volume:.1f} L, available daily capacity: {available_daily_capacity_litres:.1f} L "
+            f"across {central_physical_bins} bin(s) with {central_turns} turn(s))."
+        )
+
+    if central_count > 0 and actual_spacing < close_spacing_warning_m:
         warnings.append(
             f"Placement requires approximately {actual_spacing:.1f} m spacing along the inset "
             f"boundary, below the {close_spacing_warning_m:.1f} m close-spacing warning threshold. "
@@ -397,10 +505,10 @@ def _make_location_prediction(
             f"Polygon is too narrow for the requested {boundary_inset_m:.2f} m inset; "
             f"the model reduced it to {actual_inset:.2f} m."
         )
-    if central_count > perimeter_minimum:
+    if spatial_minimum_bins > perimeter_spacing_max_bins and perimeter_spacing_max_bins > 0:
         warnings.append(
-            "The waste-capacity estimate requires more bins than perimeter spacing alone; "
-            "the bins are distributed more closely around the boundary."
+            f"Spatial minimum of {spatial_minimum_bins} bins exceeds the physical perimeter limit of "
+            f"{perimeter_spacing_max_bins} bins under the {boundary_spacing_m:.1f} m spacing policy; capped at {perimeter_spacing_max_bins}."
         )
 
     return LocationBinPrediction(
@@ -414,15 +522,19 @@ def _make_location_prediction(
         volume_litres_per_day_central=daily_volumes["central"],
         volume_litres_per_day_high=daily_volumes["high"],
         capacity_bins=capacity_counts,
-        spatial_minimum_bins=spatial_minimum_bins,
-        perimeter_spacing_minimum_bins=perimeter_minimum,
+        rectangle_perimeter_m=round(rectangle_perimeter_m, 2),
+        perimeter_spacing_max_bins=perimeter_spacing_max_bins,
         recommended_bins=recommended_counts,
+        required_emptying_turns=required_turns,
+        daily_capacity_coverage_litres=round(available_daily_capacity_litres, 2),
+        capacity_shortfall_litres=round(capacity_shortfall_litres, 2),
         bin_placements=placements,
         placement_scenario="central",
         boundary_spacing_target_m=boundary_spacing_m,
         actual_boundary_spacing_m=round(actual_spacing, 2),
         boundary_inset_m=round(actual_inset, 2),
         placement_warnings=tuple(warnings),
+        spatial_minimum_bins=spatial_minimum_bins,
     )
 
 
@@ -447,15 +559,16 @@ def predict_on_location_bins(
             must be WGS84 [longitude, latitude], as emitted by MapLibre.
         spatial_minimum_bins: Optional additional minimum count by location name.
         density_kg_per_m3: Configurable category bulk densities.
-        boundary_spacing_m: Target maximum interval between bins around the
-            inset exterior boundary. Default 30 m is a planning guideline.
+        boundary_spacing_m: Minimum spacing interval between bins around the
+            approximate best-fit rectangle perimeter. Default 25 m is Bunbetsu's
+            configured planning policy.
         boundary_inset_m: Desired inward offset from the location boundary.
         close_spacing_warning_m: Emit a warning if placements are closer than this.
 
     Returns:
-        Per-location capacity counts, final recommended count range, and
-        central-scenario coordinates. The coordinates are sampled around the
-        inward-offset exterior boundary and are in [longitude, latitude] order.
+        Per-location capacity-only demand, perimeter-constrained physical counts,
+        variable emptying-turn requirements, and central-scenario coordinates.
+        Coordinates are sampled around the inward-offset exterior boundary in [lng, lat] order.
 
     Raises:
         ValueError for missing/invalid geometry, duplicate location names,
@@ -512,8 +625,7 @@ def predict_on_location_bins(
         locations=results,
         bin_capacity_litres=BIN_CAPACITY_LITRES,
         usable_fill_fraction=USABLE_FILL_FRACTION,
-        emptying_cycles_per_day=EMPTYING_CYCLES_PER_DAY,
-        effective_capacity_litres_per_bin_per_day=EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY,
+        usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES,
         density_kg_per_m3={key: float(value) for key, value in density_kg_per_m3.items()},
         boundary_spacing_target_m=float(boundary_spacing_m),
         boundary_inset_m=float(boundary_inset_m),
@@ -521,10 +633,11 @@ def predict_on_location_bins(
             "The existing waste predictor is used without modification.",
             "Waste predictions are total kilograms over the event duration and are divided by duration_days to estimate average daily demand.",
             "Category-wise bulk-density references convert predicted mass to estimated volume; the broad 'Others' category uses a provisional 240 kg/m^3 proxy.",
-            "Each 100 L bin is treated as 80 L usable capacity and emptied twice per day, giving 160 L/day effective capacity.",
-            "Recommended bin count is the maximum of capacity-based count, any supplied spatial minimum, and the count needed to meet the configured perimeter spacing target.",
+            "Each 100 L bin is treated as 80 L usable capacity per turn (100 L * 80% usable fill fraction).",
+            "Physical bin placement is constrained by a 25 m perimeter spacing policy around the location's approximate best-fit rectangle.",
+            "When daily waste volume exceeds physical bin capacity under the 25 m spacing policy, dynamic emptying turns are calculated using nearest-integer rounding.",
             "Coordinates are sampled along an inward-offset exterior boundary; polygon holes are not used as placement boundaries.",
-            "The 30 m default is a configurable active-space planning guideline, not a universal statutory standard.",
+            "The 25 m default is Bunbetsu's configured planning policy, not a universal statutory standard.",
             "This model does not yet test access paths, doorways, utilities, emergency routes, slope, or exact pedestrian demand; review placements before operational use.",
         ),
     )

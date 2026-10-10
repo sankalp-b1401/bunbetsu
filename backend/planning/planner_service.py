@@ -25,8 +25,7 @@ from models.bin_distribution_model.bin_distribution_model import (
     BIN_CAPACITY_LITRES,
     DEFAULT_BOUNDARY_INSET_M,
     DEFAULT_BOUNDARY_SPACING_M,
-    EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY,
-    EMPTYING_CYCLES_PER_DAY,
+    USABLE_BIN_CAPACITY_LITRES,
     USABLE_FILL_FRACTION,
     OnLocationBinPrediction,
     predict_on_location_bins,
@@ -169,8 +168,13 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 activities=list(un_loc.activities),
                 capacity_bins=RangeSchema(low=0, central=0, high=0),
                 spatial_minimum_bins=0,
+                rectangle_perimeter_m=0.0,
+                perimeter_spacing_max_bins=0,
                 perimeter_spacing_minimum_bins=0,
                 recommended_bins=RangeSchema(low=0, central=0, high=0),
+                required_emptying_turns=RangeSchema(low=0, central=0, high=0),
+                daily_capacity_coverage_litres=0.0,
+                capacity_shortfall_litres=0.0,
                 placement_scenario="central",
                 boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
                 actual_boundary_spacing_m=0.0,
@@ -236,8 +240,13 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                             activities=list(poly_loc.activities),
                             capacity_bins=RangeSchema(low=0, central=0, high=0),
                             spatial_minimum_bins=0,
+                            rectangle_perimeter_m=0.0,
+                            perimeter_spacing_max_bins=0,
                             perimeter_spacing_minimum_bins=0,
                             recommended_bins=RangeSchema(low=0, central=0, high=0),
+                            required_emptying_turns=RangeSchema(low=0, central=0, high=0),
+                            daily_capacity_coverage_litres=0.0,
+                            capacity_shortfall_litres=0.0,
                             placement_scenario="central",
                             boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
                             actual_boundary_spacing_m=0.0,
@@ -253,8 +262,7 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                     locations=tuple(single_results),
                     bin_capacity_litres=BIN_CAPACITY_LITRES,
                     usable_fill_fraction=USABLE_FILL_FRACTION,
-                    emptying_cycles_per_day=EMPTYING_CYCLES_PER_DAY,
-                    effective_capacity_litres_per_bin_per_day=EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY,
+                    usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES,
                     density_kg_per_m3={},
                     boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
                     boundary_inset_m=DEFAULT_BOUNDARY_INSET_M,
@@ -305,12 +313,21 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                             high=loc_result.capacity_bins.high,
                         ),
                         spatial_minimum_bins=loc_result.spatial_minimum_bins,
-                        perimeter_spacing_minimum_bins=loc_result.perimeter_spacing_minimum_bins,
+                        rectangle_perimeter_m=loc_result.rectangle_perimeter_m,
+                        perimeter_spacing_max_bins=loc_result.perimeter_spacing_max_bins,
+                        perimeter_spacing_minimum_bins=loc_result.perimeter_spacing_max_bins,
                         recommended_bins=RangeSchema(
                             low=loc_result.recommended_bins.low,
                             central=loc_result.recommended_bins.central,
                             high=loc_result.recommended_bins.high,
                         ),
+                        required_emptying_turns=RangeSchema(
+                            low=loc_result.required_emptying_turns.low,
+                            central=loc_result.required_emptying_turns.central,
+                            high=loc_result.required_emptying_turns.high,
+                        ),
+                        daily_capacity_coverage_litres=loc_result.daily_capacity_coverage_litres,
+                        capacity_shortfall_litres=loc_result.capacity_shortfall_litres,
                         placement_scenario=loc_result.placement_scenario,
                         boundary_spacing_target_m=loc_result.boundary_spacing_target_m,
                         actual_boundary_spacing_m=loc_result.actual_boundary_spacing_m,
@@ -330,6 +347,10 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
     total_rec_low = sum(rec.recommended_bins.low for rec in location_recommendations)
     total_rec_central = sum(rec.recommended_bins.central for rec in location_recommendations)
     total_rec_high = sum(rec.recommended_bins.high for rec in location_recommendations)
+
+    peak_turns_low = max((rec.required_emptying_turns.low for rec in location_recommendations), default=0)
+    peak_turns_central = max((rec.required_emptying_turns.central for rec in location_recommendations), default=0)
+    peak_turns_high = max((rec.required_emptying_turns.high for rec in location_recommendations), default=0)
 
     placed_locations = [r for r in location_recommendations if r.placement_status == "placed"]
     if bin_model_failed or (not placed_locations and unsupported_locations):
@@ -355,14 +376,18 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 central=float(total_rec_central),
                 high=float(total_rec_high),
             ),
+            required_emptying_turns=RangeSchema(
+                low=float(peak_turns_low),
+                central=float(peak_turns_central),
+                high=float(peak_turns_high),
+            ),
             stream_counts=None,
             stream_breakdown_available=False,
             locations=location_recommendations,
             bins=all_placed_markers,
             bin_capacity_litres=BIN_CAPACITY_LITRES,
             usable_fill_fraction=USABLE_FILL_FRACTION,
-            emptying_cycles_per_day=EMPTYING_CYCLES_PER_DAY,
-            effective_capacity_litres_per_bin_per_day=EFFECTIVE_BIN_CAPACITY_LITRES_PER_DAY,
+            usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES,
             boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
             boundary_inset_m=DEFAULT_BOUNDARY_INSET_M,
             assumptions=bin_assumptions,

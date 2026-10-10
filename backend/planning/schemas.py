@@ -128,14 +128,28 @@ class LocationBinRecommendation(BaseModel):
     location_name: str = Field(..., description="Location name")
     area: float = Field(..., description="Area in square metres")
     activities: list[str] = Field(default_factory=list, description="Assigned activities")
-    capacity_bins: RangeSchema = Field(..., description="Bins required to satisfy daily waste volume")
+    capacity_bins: RangeSchema = Field(..., description="Capacity-only bin demand before perimeter constraint")
     spatial_minimum_bins: int = Field(default=0, description="Spatial minimum count override")
-    perimeter_spacing_minimum_bins: int = Field(
-        default=0, description="Minimum bins to satisfy boundary spacing guideline"
+    rectangle_perimeter_m: float = Field(default=0.0, description="Approximate best-fit rectangle perimeter in metres")
+    perimeter_spacing_max_bins: int = Field(
+        default=0, description="Maximum physical bins allowed under 25 m boundary spacing policy"
     )
-    recommended_bins: RangeSchema = Field(..., description="Final recommended bin count range")
+    perimeter_spacing_minimum_bins: Optional[int] = Field(
+        default=None, description="Deprecated alias for perimeter_spacing_max_bins"
+    )
+    recommended_bins: RangeSchema = Field(..., description="Final physical recommended bin count range")
+    required_emptying_turns: RangeSchema = Field(
+        default_factory=lambda: RangeSchema(low=1, central=1, high=1),
+        description="Calculated emptying turns per bin per day (capacity-equivalent uses)",
+    )
+    daily_capacity_coverage_litres: float = Field(
+        default=0.0, description="Available daily waste volume capacity in litres"
+    )
+    capacity_shortfall_litres: float = Field(
+        default=0.0, description="Remaining uncovered daily waste volume in litres"
+    )
     placement_scenario: str = Field(default="central", description="Scenario used for marker coordinates")
-    boundary_spacing_target_m: float = Field(default=30.0, description="Target boundary spacing in metres")
+    boundary_spacing_target_m: float = Field(default=25.0, description="Target boundary spacing in metres")
     actual_boundary_spacing_m: float = Field(default=0.0, description="Actual achieved boundary spacing in metres")
     boundary_inset_m: float = Field(default=1.5, description="Boundary inward offset in metres")
     placement_warnings: list[str] = Field(default_factory=list, description="Per-location placement warnings")
@@ -150,9 +164,12 @@ class LocationBinRecommendation(BaseModel):
 class BinRecommendationResponse(BaseModel):
     """Aggregated output from Bunbetsu bin distribution model."""
 
-    total_bins: int = Field(..., description="Total central recommended bin count across all locations")
-    capacity_bins: RangeSchema = Field(..., description="Total capacity-based bin range across all locations")
-    recommended_bins: RangeSchema = Field(..., description="Total recommended bin count range across all locations")
+    total_bins: int = Field(..., description="Total central recommended physical bin count across all locations")
+    capacity_bins: RangeSchema = Field(..., description="Total capacity-only bin demand range across all locations")
+    recommended_bins: RangeSchema = Field(..., description="Total recommended physical bin count range across all locations")
+    required_emptying_turns: RangeSchema = Field(
+        ..., description="Peak required emptying turns per bin per day across locations"
+    )
     stream_counts: Optional[dict[str, int]] = Field(
         default=None,
         description="Stream-specific counts if modelled; None when spatial model only models total deployment.",
@@ -173,14 +190,17 @@ class BinRecommendationResponse(BaseModel):
     usable_fill_fraction: float = Field(
         default=0.80, description="Usable fill fraction before emptying (model constant: 0.80)"
     )
-    emptying_cycles_per_day: int = Field(
-        default=2, description="Assumed emptying frequency per day (model constant: 2)"
+    usable_bin_capacity_litres: float = Field(
+        default=80.0, description="Usable volume capacity per bin per turn in litres (model constant: 80 L)"
     )
-    effective_capacity_litres_per_bin_per_day: float = Field(
-        default=160.0, description="Effective daily capacity per bin in litres (model constant: 160 L/day)"
+    emptying_cycles_per_day: Optional[int] = Field(
+        default=None, description="Deprecated: Emptying frequency is dynamically calculated per location"
+    )
+    effective_capacity_litres_per_bin_per_day: Optional[float] = Field(
+        default=None, description="Deprecated: Replaced by usable_bin_capacity_litres and dynamic turns"
     )
     boundary_spacing_target_m: float = Field(
-        default=30.0, description="Configured perimeter spacing guideline in metres"
+        default=25.0, description="Configured perimeter spacing guideline in metres"
     )
     boundary_inset_m: float = Field(
         default=1.5, description="Configured inward offset from exterior boundary in metres"

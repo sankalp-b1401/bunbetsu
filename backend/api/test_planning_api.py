@@ -377,9 +377,20 @@ def test_12_response_serialization_matches_frontend_contract(base_planning_paylo
         bin_meta = data["bin_recommendations"]
         assert bin_meta["bin_capacity_litres"] == 100.0
         assert bin_meta["usable_fill_fraction"] == 0.80
-        assert bin_meta["effective_capacity_litres_per_bin_per_day"] == 160.0
+        assert bin_meta["usable_bin_capacity_litres"] == 80.0
+        assert bin_meta["boundary_spacing_target_m"] == 25.0
+        assert "required_emptying_turns" in bin_meta
         assert bin_meta["stream_breakdown_available"] is False
         assert bin_meta["stream_counts"] is None
+
+        # Check location-level new fields
+        loc0 = bin_meta["locations"][0]
+        assert "rectangle_perimeter_m" in loc0
+        assert loc0["rectangle_perimeter_m"] > 0
+        assert "perimeter_spacing_max_bins" in loc0
+        assert "required_emptying_turns" in loc0
+        assert "daily_capacity_coverage_litres" in loc0
+        assert "capacity_shortfall_litres" in loc0
 
         # Check diagnostics structure
         diag = data["diagnostics"]
