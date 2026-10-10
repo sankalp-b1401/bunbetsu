@@ -35,6 +35,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
 
   // Execute actual campus search via FastAPI Nominatim endpoint
   const performSearch = async (query: string) => {
+    if (isLoading) return;
     const trimmed = query.trim();
     if (!trimmed) {
       setErrorMessage('Please enter a college or university name to search.');
@@ -58,11 +59,13 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
   };
 
   const handleSearchSubmit = () => {
+    if (isLoading) return;
     performSearch(searchQuery);
   };
 
   // Quick select popular campus badges
   const handleSelectSuggested = (campusName: string) => {
+    if (isLoading) return;
     setSearchQuery(campusName);
     performSearch(campusName);
   };
@@ -85,7 +88,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
       </div>
 
       {/* 2. Floating Map Overlay: Header, Search & Campus Card */}
-      <div className="absolute top-4 left-4 sm:top-5 sm:left-6 z-20 w-[calc(100%-2rem)] sm:w-[460px] max-w-[calc(100%-2rem)] flex flex-col gap-3 pointer-events-none">
+      <div className="absolute top-4 left-4 sm:top-5 sm:left-6 z-20 w-[calc(100%-2rem)] sm:w-[480px] max-w-[calc(100%-2rem)] flex flex-col gap-3 pointer-events-none">
         {/* Main Floating Search & Header Card */}
         <div
           ref={searchContainerRef}
@@ -105,10 +108,17 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
             </p>
           </div>
 
-          {/* Search Box with Find My Campus Button */}
-          <div className="relative z-40">
-            <div className="relative flex items-center shadow-2xs rounded-lg bg-white border border-[#E1E8DE] focus-within:border-[#004B20] focus-within:ring-2 focus-within:ring-[#70D000]/25 transition-all">
-              <Search className="w-4 h-4 text-[#667267] absolute left-3 pointer-events-none" />
+          {/* Search Form with Separate Input and Button */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSearchSubmit();
+            }}
+            className="relative z-40 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2.5"
+          >
+            {/* Input Wrapper */}
+            <div className="relative flex-1 min-w-0 flex items-center h-10 sm:h-10.5 rounded-lg bg-white border border-[#E1E8DE] shadow-2xs focus-within:border-[#004B20] focus-within:ring-2 focus-within:ring-[#70D000]/25 transition-all">
+              <Search className="w-4 h-4 text-[#667267] absolute left-3 pointer-events-none shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
@@ -119,39 +129,39 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
+                    e.preventDefault();
                     handleSearchSubmit();
                   }
                 }}
-                placeholder="Search college or university..."
-                className="w-full pl-9 pr-36 py-2.5 bg-transparent rounded-lg text-[#202820] placeholder:text-[#667267] text-xs sm:text-sm font-medium focus:outline-none disabled:opacity-60"
+                placeholder="Search college or campus name"
+                className="w-full h-full min-w-0 pl-9 pr-3.5 bg-transparent rounded-lg text-[#202820] placeholder:text-[#667267] text-xs sm:text-sm font-medium focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               />
-
-              {/* "Find My Campus" button */}
-              <button
-                type="button"
-                onClick={handleSearchSubmit}
-                disabled={isLoading}
-                className="absolute right-1 top-1 bottom-1 px-3 bg-[#004B20] hover:bg-[#003B19] active:bg-[#002B12] disabled:opacity-60 text-white text-[11px] sm:text-xs font-semibold rounded-md flex items-center gap-1.5 transition-all cursor-pointer shadow-xs shrink-0 font-sans"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Searching...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Find My Campus</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </>
-                )}
-              </button>
             </div>
-          </div>
+
+            {/* "Find My Campus" Button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full sm:w-auto sm:min-w-[150px] h-10 sm:h-10.5 px-4 bg-[#004B20] hover:bg-[#003B19] active:bg-[#002B12] disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs hover:shadow-sm shrink-0 flex-shrink-0 whitespace-nowrap font-sans"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>Searching...</span>
+                </>
+              ) : (
+                <>
+                  <span>Find My Campus</span>
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                </>
+              )}
+            </button>
+          </form>
 
           {/* Quick Popular Suggestions Chips */}
           <div className="flex items-center gap-1.5 text-xs text-[#667267] flex-wrap pt-0.5">
             <span className="font-semibold text-[#202820] text-[11px]">Popular:</span>
-            {['MNNIT Allahabad', 'NIT Trichy', 'IIT Delhi', 'IIT Bombay', 'BITS Pilani'].map(
+            {['MNNIT Allahabad', 'NIT Trichy', 'IIT Delhi', 'IIT Bombay'].map(
               (suggested) => (
                 <button
                   key={suggested}
