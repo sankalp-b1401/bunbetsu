@@ -300,3 +300,57 @@ export interface RoutePlanResult {
   warnings: string[];
 }
 
+// Plan Dashboard Presentation & Heatmap Types
+export type HeatmapMode = 'none' | 'total' | 'category' | 'recyclable' | 'disposable';
+export type WasteCategory = 'Food' | 'Plastic' | 'Paper' | 'Glass' | 'Others';
+
+export interface BaselineSensitivityPoint {
+  baselineRate: number; // kg/person/day
+  totalWasteKg: number;
+  isCurrent?: boolean;
+}
+
+export interface RecommendedBinItem {
+  id: string;
+  locationId: string;
+  locationName?: string;
+  binType: 'General' | 'Recyclable' | 'Food';
+  coordinates: [number, number]; // [lng, lat]
+  capacityLitres?: number;
+  allocationNote?: string;
+}
+
+export interface BinRecommendationResult {
+  totalBins: number;
+  streamCounts: {
+    general: number;
+    recyclable: number;
+    food: number;
+  };
+  bins: RecommendedBinItem[];
+  metadata?: Record<string, any>;
+}
+
+export interface PlanDashboardProps {
+  campus: Campus;
+  eventDetails: EventDetails;
+  locations: CampusLocation[];
+
+  prediction: PredictionResult | null;
+  predictionLoading: boolean;
+  predictionError: string | null;
+  predictionStale?: boolean;
+
+  routeResult: RoutePlanResult | null;
+  routesLoading: boolean;
+  routesError: string | null;
+  routesStale: boolean;
+
+  binRecommendations?: BinRecommendationResult | null;
+  sensitivitySeries?: BaselineSensitivityPoint[];
+
+  onBackToConfigure: () => void;
+  onRecalculatePrediction: () => void;
+  onCalculateRoutes: () => void;
+}
+

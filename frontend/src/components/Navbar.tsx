@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { Check, History, Users, X, Calendar, Download, Trophy, Sparkles, MessageSquare, ArrowRight, LayoutTemplate } from 'lucide-react';
 
 interface NavbarProps {
-  currentStep: 1 | 2;
-  onStepClick: (step: 1 | 2) => void;
+  currentStep: 1 | 2 | 3;
+  onStepClick: (step: 1 | 2 | 3) => void;
   step1Completed: boolean;
+  canGoToPlan?: boolean;
   onResetPlan?: () => void;
 }
 
@@ -12,6 +13,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentStep,
   onStepClick,
   step1Completed,
+  canGoToPlan = false,
   onResetPlan,
 }) => {
   const [showEventHistory, setShowEventHistory] = useState(false);
@@ -63,9 +65,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Campus</span>
             </button>
 
-            <span className="text-[#C4D1BF] select-none text-[11px] font-light px-0.5">/</span>
+            <span className="text-[#C4D1BF] select-none text-[11px] font-light px-0.5">→</span>
 
-            {/* Step 2: Configure & Plan */}
+            {/* Step 2: Configure */}
             <button
               type="button"
               onClick={() => step1Completed && onStepClick(2)}
@@ -73,7 +75,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               title={!step1Completed ? 'Confirm Campus on Step 1 first' : ''}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
                 currentStep === 2
-                  ? 'bg-[#004B20] text-white shadow-xs font-bold'
+                  ? 'bg-white text-[#004B20] shadow-xs border border-[#E1E8DE]/90 font-bold'
+                  : currentStep > 2
+                  ? 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium cursor-pointer'
                   : step1Completed
                   ? 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium cursor-pointer'
                   : 'text-[#667267]/50 cursor-not-allowed opacity-50 font-medium'
@@ -81,14 +85,44 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <div
                 className={`w-4.5 h-4.5 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${
-                  currentStep === 2
+                  currentStep > 2
+                    ? 'bg-[#004B20] text-[#70D000]'
+                    : currentStep === 2
                     ? 'bg-[#70D000] text-[#004B20]'
                     : 'bg-[#E1E8DE] text-[#667267]'
                 }`}
               >
-                2
+                {currentStep > 2 ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : '2'}
               </div>
               <span>Configure</span>
+            </button>
+
+            <span className="text-[#C4D1BF] select-none text-[11px] font-light px-0.5">→</span>
+
+            {/* Step 3: Plan */}
+            <button
+              type="button"
+              onClick={() => canGoToPlan && onStepClick(3)}
+              disabled={!canGoToPlan}
+              title={!canGoToPlan ? 'Configure event details and locations first' : ''}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
+                currentStep === 3
+                  ? 'bg-[#004B20] text-white shadow-xs font-bold'
+                  : canGoToPlan
+                  ? 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium cursor-pointer'
+                  : 'text-[#667267]/50 cursor-not-allowed opacity-50 font-medium'
+              }`}
+            >
+              <div
+                className={`w-4.5 h-4.5 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${
+                  currentStep === 3
+                    ? 'bg-[#70D000] text-[#004B20]'
+                    : 'bg-[#E1E8DE] text-[#667267]'
+                }`}
+              >
+                3
+              </div>
+              <span>Plan</span>
             </button>
           </nav>
 

@@ -1,21 +1,20 @@
 /**
  * BUNBETSU — Streamlined Campus Event Planning & Waste Prediction UI
- * Two-step workflow: Campus Selection -> Configuration with Direct Location Activity Tags & Planning.
+ * Three-step workflow: Campus Selection -> Event Configuration -> Plan Dashboard.
  */
 
 import React, { useState, useMemo } from 'react';
 import { Navbar } from './components/Navbar';
 import { CampusFinder } from './components/Step1CampusFinder/CampusFinder';
 import { EventConfiguration } from './components/Step2EventConfiguration/EventConfiguration';
-import { PredictionPlanModal } from './components/PredictionPlanModal';
-import { SAMPLE_CAMPUSES } from './constants/activities';
+import { PlanDashboard } from './components/Step3Plan/PlanDashboard';
 import { Campus, CampusLocation, EventDetails, PredictionResult, ActivityType, RoutePlanResult } from './types/bunbetsu';
 import { requestWastePrediction } from './services/predictionApi';
 import { planCampusRoutes } from './services/routesApi';
 
 export default function App() {
-  // 2-Step navigation: 1 = Campus Finder, 2 = Event Configuration & Plan
-  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+  // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [step1Completed, setStep1Completed] = useState<boolean>(false);
 
   // Selected campus state: null by default (no auto-selected campus)
@@ -38,17 +37,17 @@ export default function App() {
     baselineRateKgPerPersonDay: 0.45, // Calibrated standard benchmark
   });
 
-  // Final prediction result modal & loading states
+  // Final prediction result & loading states
   const [predictionResult, setPredictionResult] = useState<PredictionResult | null>(null);
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
   const [predictionError, setPredictionError] = useState<string | null>(null);
+  const [predictionStale, setPredictionStale] = useState<boolean>(false);
 
   // Pedestrian routes pipeline state
   const [routeResult, setRouteResult] = useState<RoutePlanResult | null>(null);
   const [isCalculatingRoutes, setIsCalculatingRoutes] = useState<boolean>(false);
   const [routesError, setRoutesError] = useState<string | null>(null);
   const [isRoutesStale, setIsRoutesStale] = useState<boolean>(false);
-  const [showRoutes, setShowRoutes] = useState<boolean>(true);
 
   // Campus selection change handler
   const handleSelectCampus = (newCampus: Campus) => {
@@ -63,6 +62,7 @@ export default function App() {
     setSelectedLocationId(null);
     setPredictionError(null);
     setPredictionResult(null);
+    setPredictionStale(false);
     setRouteResult(null);
     setRoutesError(null);
     setIsRoutesStale(false);
@@ -79,6 +79,7 @@ export default function App() {
   const handleUpdateEventDetails = (partial: Partial<EventDetails>) => {
     setEventDetails((prev) => ({ ...prev, ...partial }));
     if (predictionError) setPredictionError(null);
+    if (predictionResult) setPredictionStale(true);
   };
 
   // Update an active location (e.g. assigning/toggling activity tags or renaming)
@@ -91,14 +92,13 @@ export default function App() {
       prev.map((loc) => (loc.id === updatedLocation.id ? { ...loc, ...updatedLocation } : loc))
     );
     if (predictionError) setPredictionError(null);
+    if (predictionResult) setPredictionStale(true);
     if (routeResult) setIsRoutesStale(true);
   };
 
   // Unselect location: removes from active event plan, while preserving the created location on campus map
-  // with a fresh, un-preselected activity profile
   const handleDeleteLocation = (locationId: string) => {
     setLocations((prev) => prev.filter((l) => l.id !== locationId));
-    // Reset activity profile to empty in master pool so reselecting starts fresh with NO preselected activities
     setAllCampusLocations((prev) =>
       prev.map((loc) => (loc.id === locationId ? { ...loc, activities: [] } : loc))
     );
@@ -106,40 +106,38 @@ export default function App() {
       setSelectedLocationId(null);
     }
     if (predictionError) setPredictionError(null);
+    if (predictionResult) setPredictionStale(true);
     if (routeResult) setIsRoutesStale(true);
   };
 
   // Add a newly created custom location from drawing / map modal
   const handleAddCustomLocation = (newLocation: CampusLocation) => {
-    // 1. Add to master pool of campus locations
     setAllCampusLocations((prev) => {
       const filtered = prev.filter((l) => l.id !== newLocation.id);
       return [...filtered, newLocation];
     });
-    // 2. Add to active event locations
     setLocations((prev) => {
       const filtered = prev.filter((l) => l.id !== newLocation.id);
       return [...filtered, newLocation];
     });
     setSelectedLocationId(newLocation.id);
     if (predictionError) setPredictionError(null);
+    if (predictionResult) setPredictionStale(true);
     if (routeResult) setIsRoutesStale(true);
   };
 
-  // Select / reselect a location (either already in active event or previously unselected)
+  // Select / reselect a location
   const handleSelectLocation = (locationId: string, fallbackLocation?: CampusLocation) => {
     setLocations((prev) => {
       const isAlreadyActive = prev.some((l) => l.id === locationId);
       if (isAlreadyActive) {
         return prev;
       }
-
-      // Location was unselected or available: reselect it with a FRESH, un-preselected activity profile
       const foundInPool = allCampusLocations.find((l) => l.id === locationId) || fallbackLocation;
       if (foundInPool) {
         const freshReselectedLocation: CampusLocation = {
           ...foundInPool,
-          activities: [], // Fresh unselected activities; only name and geometry persist!
+          activities: [],
         };
         return [...prev.filter((l) => l.id !== locationId), freshReselectedLocation];
       }
@@ -158,8 +156,29 @@ export default function App() {
     };
   }, [selectedCampus, allCampusLocations]);
 
-  // Trigger Plan Action (Validation & Execution of Backend Python Model)
-  const handleTriggerPlan = async () => {
+  // Execute waste prediction model
+  const executePrediction = async () => {
+    setIsPredicting(true);
+    setPredictionError(null);
+
+    try {
+      const result = await requestWastePrediction({
+        totalFootfall: eventDetails.expectedFootfall,
+        durationDays: eventDetails.durationDays,
+        baselineRateKgPerPersonDay: eventDetails.baselineRateKgPerPersonDay || 0.45,
+        locations,
+      });
+      setPredictionResult(result);
+      setPredictionStale(false);
+    } catch (err: any) {
+      setPredictionError(err.message || 'Failed to execute waste prediction model.');
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  // Transition from Step 2 (Configure) to Step 3 (Plan)
+  const handleTriggerPlan = () => {
     if (!eventDetails.festName.trim()) {
       setPredictionError('Fest name is required.');
       return;
@@ -190,25 +209,12 @@ export default function App() {
       }
     }
 
-    setIsPredicting(true);
-    setPredictionError(null);
-
-    try {
-      const result = await requestWastePrediction({
-        totalFootfall: eventDetails.expectedFootfall,
-        durationDays: eventDetails.durationDays,
-        baselineRateKgPerPersonDay: eventDetails.baselineRateKgPerPersonDay || 0.45,
-        locations,
-      });
-      setPredictionResult(result);
-    } catch (err: any) {
-      setPredictionError(err.message || 'Failed to execute waste prediction model.');
-    } finally {
-      setIsPredicting(false);
-    }
+    // Switch to step 3 and execute prediction
+    setCurrentStep(3);
+    executePrediction();
   };
 
-  // Trigger pedestrian routes calculation
+  // Trigger pedestrian routes calculation on Plan Dashboard
   const handleCalculateRoutes = async () => {
     if (!selectedCampus) return;
     if (locations.length === 0) {
@@ -227,13 +233,19 @@ export default function App() {
       });
       setRouteResult(result);
       setIsRoutesStale(false);
-      setShowRoutes(true);
     } catch (err: any) {
       setRoutesError(err.message || 'Failed to calculate pedestrian routes.');
     } finally {
       setIsCalculatingRoutes(false);
     }
   };
+
+  const canGoToPlan =
+    step1Completed &&
+    locations.length > 0 &&
+    Boolean(eventDetails.festName.trim()) &&
+    eventDetails.durationDays > 0 &&
+    eventDetails.expectedFootfall > 0;
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans">
@@ -242,9 +254,13 @@ export default function App() {
         currentStep={currentStep}
         onStepClick={setCurrentStep}
         step1Completed={step1Completed}
+        canGoToPlan={canGoToPlan}
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);
+          setPredictionResult(null);
+          setPredictionError(null);
+          setPredictionStale(false);
           setRouteResult(null);
           setRoutesError(null);
           setIsRoutesStale(false);
@@ -275,24 +291,28 @@ export default function App() {
             onTriggerPlan={handleTriggerPlan}
             isPredicting={isPredicting}
             predictionError={predictionError}
+          />
+        )}
+
+        {currentStep === 3 && selectedCampus && (
+          <PlanDashboard
+            campus={activeCampusWithLocations || selectedCampus}
+            eventDetails={eventDetails}
+            locations={locations}
+            prediction={predictionResult}
+            predictionLoading={isPredicting}
+            predictionError={predictionError}
+            predictionStale={predictionStale}
             routeResult={routeResult}
-            isCalculatingRoutes={isCalculatingRoutes}
+            routesLoading={isCalculatingRoutes}
             routesError={routesError}
-            isRoutesStale={isRoutesStale}
-            showRoutes={showRoutes}
-            onToggleShowRoutes={setShowRoutes}
+            routesStale={isRoutesStale}
+            onBackToConfigure={() => setCurrentStep(2)}
+            onRecalculatePrediction={executePrediction}
             onCalculateRoutes={handleCalculateRoutes}
           />
         )}
       </main>
-
-      {/* Final Plan Prediction Modal */}
-      {predictionResult && (
-        <PredictionPlanModal
-          result={predictionResult}
-          onClose={() => setPredictionResult(null)}
-        />
-      )}
     </div>
   );
 }
