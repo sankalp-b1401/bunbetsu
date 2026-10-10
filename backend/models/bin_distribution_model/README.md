@@ -2,31 +2,46 @@
 
 ## Overview
 
-The Bunbetsu on-location bin distribution model translates location-level waste predictions into concrete, perimeter-bounded physical bin counts, variable daily emptying turn requirements, and polygon-constrained coordinate placements.
+The Bunbetsu on-location bin distribution model translates location-level waste predictions into concrete, perimeter-bounded physical bin counts for **disposable waste** and **recyclable waste**, variable daily emptying turn requirements per stream, and polygon-constrained coordinate placements.
 
 The underlying mathematical waste prediction model (`waste_predictor_model.py`) remains frozen and unmodified.
 
 ---
 
-## 1. Core Model Equations
+## 1. Waste Stream Classification
 
-### 1.1 Usable Bin Capacity
+Predicted category waste masses over the event duration are divided by `duration_days` to calculate average daily demand and converted to bulk volume using category-specific bulk density references ($\text{kg/m}^3$):
+
+- **Disposable Stream ($V_{\text{disposable}}$):** Food waste ($290\,\text{kg/m}^3$) + Other waste ($240\,\text{kg/m}^3$ provisional proxy).
+- **Recyclable Stream ($V_{\text{recyclable}}$):** Recyclable materials comprising Plastic ($62.5\,\text{kg/m}^3$) + Paper ($88.0\,\text{kg/m}^3$) + Glass ($197.5\,\text{kg/m}^3$).
+
+Total daily volume is:
+$$V_{\text{total}} = V_{\text{disposable}} + V_{\text{recyclable}}$$
+
+---
+
+## 2. Core Model Equations
+
+### 2.1 Usable Bin Capacity
 Physical bins are standardized 100 L public receptacles. With an 80% usable fill fraction before overflow or compaction limits:
 
-$$\text{usable capacity per bin per use} = 100\,\text{L} \times 0.80 = 80\,\text{L}$$
+$$\text{usable capacity per bin per turn } (C_{\text{usable}}) = 100\,\text{L} \times 0.80 = 80\,\text{L}$$
 
 The model does not force a fixed number of emptying cycles per day. Instead, emptying frequency is dynamically calculated based on predicted waste demand and physical perimeter constraints.
 
-### 1.2 Capacity-Only Demand ($N$)
-Given predicted category waste masses converted to bulk volume via empirical bulk density references ($\text{kg/m}^3$) and divided by the event duration ($\text{duration\_days}$):
+### 2.2 Capacity-Only Demand by Stream
+For each stream, capacity-only demand represents the number of capacity-equivalent bin uses needed per day before physical perimeter constraints:
 
-$$N = \left\lceil \frac{\text{predicted daily waste volume (L)}}{\text{usable capacity per bin per use (80 L)}} \right\rceil$$
+$$N_{\text{disposable}} = \left\lceil \frac{V_{\text{disposable}}}{C_{\text{usable}}} \right\rceil$$
 
-If predicted daily waste volume is zero, $N = 0$.
+$$N_{\text{recyclable}} = \left\lceil \frac{V_{\text{recyclable}}}{C_{\text{usable}}} \right\rceil$$
 
-$N$ represents the number of capacity-equivalent bin uses needed per day before considering physical perimeter constraints.
+Total capacity demand is defined consistently as the sum of stream demands:
+$$N = N_{\text{disposable}} + N_{\text{recyclable}}$$
 
-### 1.3 Best-Fit Rectangle Perimeter ($P$)
+If a stream has zero waste volume, its capacity demand is zero.
+
+### 2.3 Best-Fit Rectangle Perimeter ($P$)
 Each activity location geometry (GeoJSON Polygon or MultiPolygon in WGS84 coordinates) is projected to a local metric azimuthal-equidistant CRS. The minimum rotated bounding rectangle (approximate best-fit rectangle) is computed in projected metres:
 
 $$P = \text{minimum rotated rectangle perimeter (metres)}$$
@@ -37,55 +52,84 @@ $$P = \sum_{i} P_i$$
 
 This prevents treating the empty space between disconnected zones as a usable placement perimeter, ensuring that aggregate physical capacity is not artificially inflated.
 
-### 1.4 Maximum Physical Bin Count ($M$)
+### 2.4 Maximum Physical Bin Count ($M$)
 Physical bin density is constrained by Bunbetsu's **25 m minimum perimeter spacing policy**:
 
 $$M = \left\lfloor \frac{P}{25\,\text{m}} \right\rfloor$$
 
 Perimeter spacing serves as a physical upper bound ($M$), not an additive minimum. If $M = 0$ (e.g. for small zones where perimeter $< 25\,\text{m}$), the model does not force a placement and emits an explicit infeasibility warning.
 
-### 1.5 Final Physical Bin Count
-For each demand scenario (low, central, high):
+### 2.5 Proportional Physical Bin Allocation (Largest-Remainder Method)
 
-$$\text{physical bins} = \begin{cases} 0 & \text{if } N = 0 \text{ or } M = 0 \\ \min(N, M) & \text{if } M > 0 \text{ and } N > 0 \end{cases}$$
+#### Case A: Demand fits ($N \le M$)
+When perimeter capacity satisfies total capacity demand:
+$$B_{\text{disposable}} = N_{\text{disposable}}$$
+$$B_{\text{recyclable}} = N_{\text{recyclable}}$$
+$$B_{\text{total}} = B_{\text{disposable}} + B_{\text{recyclable}} = N$$
 
-If an optional spatial minimum override ($S$) is provided, desired demand is $\max(N, S)$, still capped strictly at $M$.
+#### Case B: Demand exceeds perimeter capacity ($N > M$ and $M > 0$)
+Both stream demands are scaled proportionally to $M$:
+$$\text{scaled}_{\text{disposable}} = \frac{M \times N_{\text{disposable}}}{N}$$
+$$\text{scaled}_{\text{recyclable}} = \frac{M \times N_{\text{recyclable}}}{N}$$
 
-### 1.6 Variable Emptying Turns
-When physical bin capacity $M$ satisfies or exceeds waste demand ($M \ge N$), one capacity-equivalent use per bin per day is sufficient:
+Counts are converted to integers using the **largest-remainder method** (Hamilton's method):
+1. Compute integer floors: $f_{\text{disp}} = \lfloor \text{scaled}_{\text{disposable}} \rfloor$, $f_{\text{rec}} = \lfloor \text{scaled}_{\text{recyclable}} \rfloor$.
+2. Compute unallocated bins: $\text{remaining} = M - (f_{\text{disp}} + f_{\text{rec}})$.
+3. Assign the remaining bin(s) to the stream with the larger fractional remainder:
+   $$\text{rem}_{\text{disp}} = \text{scaled}_{\text{disposable}} - f_{\text{disp}}$$
+   $$\text{rem}_{\text{rec}} = \text{scaled}_{\text{recyclable}} - f_{\text{rec}}$$
+4. **Deterministic Tie-Break:**
+   - If remainders are equal, assign to the stream with higher original demand ($N_{\text{disposable}}$ vs $N_{\text{recyclable}}$).
+   - If still tied, assign to Disposable first.
+5. Invariant guaranteed:
+   $$B_{\text{disposable}} + B_{\text{recyclable}} \equiv M$$
 
-$$\text{required turns} = 1 \quad (\text{for } N > 0 \text{ and } M \ge N)$$
+#### Case C: Zero perimeter capacity ($M = 0$ and $N > 0$)
+$$B_{\text{disposable}} = 0, \quad B_{\text{recyclable}} = 0$$
+The model emits an explicit infeasibility warning and reports the unaccommodated demand.
 
-When waste demand exceeds physical bin capacity ($N > M$), dynamic emptying turns are calculated using conventional half-up rounding (ties with fractional part $\ge 0.5$ round up):
+### 2.6 Variable Emptying Turns per Stream
+Emptying requirements are calculated independently for each stream:
 
-$$\text{required turns} = \text{round}\left( \frac{N}{\text{physical bins}} \right) \quad (\text{when } N > M)$$
+$$\text{turns}_{\text{disposable}} = \max\left(1, \text{round}\left( \frac{N_{\text{disposable}}}{B_{\text{disposable}}} \right)\right) \quad (\text{when } B_{\text{disposable}} > 0)$$
 
-A "capacity-equivalent use" or "emptying turn" includes the initial filling period. The number of additional emptying operations during the day is $\text{required turns} - 1$.
+$$\text{turns}_{\text{recyclable}} = \max\left(1, \text{round}\left( \frac{N_{\text{recyclable}}}{B_{\text{recyclable}}} \right)\right) \quad (\text{when } B_{\text{recyclable}} > 0)$$
 
-### 1.7 Capacity Coverage and Shortfall Diagnostic
-Nearest-integer rounding can leave a daily capacity shortfall when the fraction rounds down (e.g. $N = 7, M = 3 \implies 7/3 \approx 2.33 \to 2$ turns, yielding $3 \times 80 \times 2 = 480\,\text{L}$, leaving an uncovered deficit of $80\,\text{L}$):
+Using conventional half-up rounding (ties with fractional part $\ge 0.5$ round up).
+If $B_s = 0$ or $N_s = 0$, $\text{turns}_s = 0$.
 
-$$\text{available daily capacity} = \text{physical bins} \times 80\,\text{L} \times \text{required turns}$$
+Overall peak turns for the location is:
+$$\text{required turns} = \max(\text{turns}_{\text{disposable}}, \text{turns}_{\text{recyclable}})$$
 
-$$\text{capacity shortfall} = \max\left(0.0,\, \text{predicted daily volume} - \text{available daily capacity}\right)$$
+### 2.7 Capacity Coverage and Shortfall Diagnostic
+Available daily volume capacity and shortfalls are tracked per stream:
 
-Whenever a shortfall occurs, the model reports `capacity_shortfall_litres` and emits an explicit placement warning.
+$$\text{available}_{\text{disposable}} = B_{\text{disposable}} \times C_{\text{usable}} \times \text{turns}_{\text{disposable}}$$
+$$\text{shortfall}_{\text{disposable}} = \max\left(0.0, V_{\text{disposable}} - \text{available}_{\text{disposable}}\right)$$
+
+$$\text{available}_{\text{recyclable}} = B_{\text{recyclable}} \times C_{\text{usable}} \times \text{turns}_{\text{recyclable}}$$
+$$\text{shortfall}_{\text{recyclable}} = \max\left(0.0, V_{\text{recyclable}} - \text{available}_{\text{recyclable}}\right)$$
+
+$$\text{total shortfall} = \text{shortfall}_{\text{disposable}} + \text{shortfall}_{\text{recyclable}}$$
+
+Whenever a shortfall occurs, the model exposes `capacity_shortfall_litres` and emits explicit diagnostic warnings.
 
 ---
 
-## 2. Spatial Placement Logic
+## 3. Spatial Placement Logic
 
-1. **Inward-Offset Exterior Boundary**: Markers are placed strictly along the actual inward-offset exterior boundary of the location polygon (default $1.5\,\text{m}$ inset), **not** along the bounding rectangle. The rectangle is used solely to evaluate perimeter capacity.
-2. **Even Midpoint Sampling**: Points are sampled at regular intervals along exterior boundary rings, avoiding vertex corners.
-3. **Rigorous Containment Validation**: Every generated coordinate pair is verified in projected metric space and in WGS84 degree space after 7-decimal-place rounding (`covers` check).
-4. **MultiPolygon Distribution**: For MultiPolygon geometries, markers are allocated proportionally to each component's inset perimeter length, ensuring no component receives more bins than its perimeter can physically support.
+1. **Shared Perimeter Spacing:** $B_{\text{total}}$ points are sampled along the actual inward-offset exterior boundary (default 1.5 m inset) using single-pass midpoint sampling. This guarantees that all physical bins share the 25 m spacing constraint without overlapping or crowding.
+2. **Even Stream Interleaving:** Sampled markers are systematically interleaved between Disposable and Recyclable streams around the perimeter ring using cumulative threshold assignment:
+   $$\text{round\_half\_up}\left(\frac{(i + 1) \times B_{\text{disposable}}}{B_{\text{total}}}\right) > \text{assigned}_{\text{disposable}} \implies \text{Disposable, else Recyclable}$$
+   This guarantees that exactly $B_{\text{disposable}}$ markers are labeled `"Disposable"` and $B_{\text{recyclable}}$ markers are labeled `"Recyclable"`.
+3. **Rigorous Containment Validation:** Every generated coordinate pair is verified in projected metric space and in WGS84 degree space after 7-decimal-place rounding (`covers` check).
+4. **MultiPolygon Distribution:** For MultiPolygon geometries, markers are allocated proportionally to each component's inset perimeter length, ensuring no component receives more bins than its perimeter physically supports.
 
 ---
 
-## 3. Assumptions and Operational Limitations
+## 4. Assumptions and Operational Limitations
 
-- **Policy Status**: The 25 m distance is Bunbetsu's configured planning policy, not a universal statutory standard. Local accessibility regulations, crowd dynamics, and fire codes take precedence.
-- **Daily Average Basis**: Bin sizing and emptying requirements reflect average daily volume over the fest duration. Peak-hour surges and burst periods require on-site monitoring.
-- **Site Review Required**: The model samples geometric boundaries; it does not check doorways, terrain slope, utility access, emergency ingress/egress routes, or vendor access corridors. Placements must be verified during site layout.
-- **Stream Allocation**: The spatial model predicts total physical bin deployment. Specific stream splits (recyclable, compost, landfill) depend on vendor contracts and local waste handling protocols.
-
+- **Policy Status:** The 25 m distance is Bunbetsu's configured planning policy, not a universal statutory standard. Local accessibility regulations, crowd dynamics, and fire codes take precedence.
+- **Daily Average Basis:** Bin sizing and emptying requirements reflect average daily volume over the fest duration. Peak-hour surges and burst periods require on-site monitoring.
+- **Site Review Required:** The model samples geometric boundaries; it does not check doorways, terrain slope, utility access, emergency ingress/egress routes, or vendor access corridors. Placements must be verified during site layout.
+- **Stream Separation:** Disposable waste represents Food + Other waste, while Recyclable waste represents Plastic + Paper + Glass. Waste contamination and sorting fidelity in practice depend on signage and attendee behavior.

@@ -380,8 +380,18 @@ def test_12_response_serialization_matches_frontend_contract(base_planning_paylo
         assert bin_meta["usable_bin_capacity_litres"] == 80.0
         assert bin_meta["boundary_spacing_target_m"] == 25.0
         assert "required_emptying_turns" in bin_meta
-        assert bin_meta["stream_breakdown_available"] is False
-        assert bin_meta["stream_counts"] is None
+        assert bin_meta["stream_breakdown_available"] is True
+        assert bin_meta["stream_counts"] is not None
+        assert "disposable" in bin_meta["stream_counts"]
+        assert "recyclable" in bin_meta["stream_counts"]
+        assert bin_meta["total_bins"] == (
+            bin_meta["stream_counts"]["disposable"] + bin_meta["stream_counts"]["recyclable"]
+        )
+
+        # Check stream-tagged markers
+        assert len(bin_meta["bins"]) == bin_meta["total_bins"]
+        for marker in bin_meta["bins"]:
+            assert marker["bin_type"] in ("Disposable", "Recyclable")
 
         # Check location-level new fields
         loc0 = bin_meta["locations"][0]
@@ -391,6 +401,12 @@ def test_12_response_serialization_matches_frontend_contract(base_planning_paylo
         assert "required_emptying_turns" in loc0
         assert "daily_capacity_coverage_litres" in loc0
         assert "capacity_shortfall_litres" in loc0
+        assert "disposable" in loc0
+        assert "recyclable" in loc0
+        assert (
+            loc0["disposable"]["physical_bins"] + loc0["recyclable"]["physical_bins"]
+            == loc0["recommended_bins"]["central"]
+        )
 
         # Check diagnostics structure
         diag = data["diagnostics"]

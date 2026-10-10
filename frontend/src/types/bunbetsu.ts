@@ -338,13 +338,24 @@ export interface RecommendedBinItem {
   id: string;
   locationId: string;
   locationName?: string;
-  binType?: 'General' | 'Recyclable' | 'Food' | string;
+  binType?: 'Disposable' | 'Recyclable' | 'General' | 'Food' | string;
   coordinates: [number, number]; // [lng, lat]
   capacityLitres?: number;
   allocationNote?: string;
   binIndex?: number;
   binScenario?: string;
   boundaryDistanceM?: number;
+}
+
+export interface StreamRecommendationItem {
+  capacity_demand_bins: number;
+  physical_bins: number;
+  required_turns: number;
+  daily_waste_kg: number;
+  daily_volume_litres: number;
+  available_capacity_litres: number;
+  capacity_shortfall_litres: number;
+  placements: RecommendedBinItem[];
 }
 
 export interface LocationBinRecommendationItem {
@@ -368,6 +379,10 @@ export interface LocationBinRecommendationItem {
   placement_warnings: string[];
   placement_status: 'placed' | 'unsupported_geometry' | 'failed';
   bin_placements: RecommendedBinItem[];
+  disposable?: StreamRecommendationItem;
+  recyclable?: StreamRecommendationItem;
+  total_capacity_demand_bins?: number;
+  total_physical_bins?: number;
 }
 
 export interface BinRecommendationResult {
@@ -377,9 +392,10 @@ export interface BinRecommendationResult {
   recommendedBins?: RangeModel;
   requiredEmptyingTurns?: RangeModel;
   streamCounts: {
-    general: number;
+    disposable: number;
     recyclable: number;
-    food: number;
+    general?: number;
+    food?: number;
   } | null;
   streamBreakdownAvailable: boolean;
   bins: RecommendedBinItem[];
@@ -434,6 +450,26 @@ export interface CampusPlanDiagnostics {
   stage_status: StageStatus;
 }
 
+export interface BackendStreamRecommendation {
+  capacity_demand_bins: number;
+  physical_bins: number;
+  required_turns: number;
+  daily_waste_kg: number;
+  daily_volume_litres: number;
+  available_capacity_litres: number;
+  capacity_shortfall_litres: number;
+  placements?: Array<{
+    id: string;
+    location_id: string;
+    location_name: string;
+    coordinates: [number, number];
+    bin_index: number;
+    bin_type?: string;
+    bin_scenario: string;
+    boundary_distance_m?: number;
+  }>;
+}
+
 export interface BackendCampusPlanResponse {
   success: boolean;
   prediction: BackendPredictionResponse | null;
@@ -465,12 +501,17 @@ export interface BackendCampusPlanResponse {
       boundary_inset_m: number;
       placement_warnings: string[];
       placement_status: 'placed' | 'unsupported_geometry' | 'failed';
+      disposable?: BackendStreamRecommendation;
+      recyclable?: BackendStreamRecommendation;
+      total_capacity_demand_bins?: number;
+      total_physical_bins?: number;
       bin_placements: Array<{
         id: string;
         location_id: string;
         location_name: string;
         coordinates: [number, number];
         bin_index: number;
+        bin_type?: string;
         bin_scenario: string;
         boundary_distance_m?: number;
       }>;
@@ -481,6 +522,7 @@ export interface BackendCampusPlanResponse {
       location_name: string;
       coordinates: [number, number];
       bin_index: number;
+      bin_type?: string;
       bin_scenario: string;
       boundary_distance_m?: number;
     }>;

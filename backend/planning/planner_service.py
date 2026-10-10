@@ -48,6 +48,7 @@ from .schemas import (
     LocationBinRecommendation,
     PlanDiagnostics,
     StageStatus,
+    StreamRecommendationSchema,
 )
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,28 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 required_emptying_turns=RangeSchema(low=0, central=0, high=0),
                 daily_capacity_coverage_litres=0.0,
                 capacity_shortfall_litres=0.0,
+                disposable=StreamRecommendationSchema(
+                    capacity_demand_bins=0,
+                    physical_bins=0,
+                    required_turns=0,
+                    daily_waste_kg=0.0,
+                    daily_volume_litres=0.0,
+                    available_capacity_litres=0.0,
+                    capacity_shortfall_litres=0.0,
+                    placements=[],
+                ),
+                recyclable=StreamRecommendationSchema(
+                    capacity_demand_bins=0,
+                    physical_bins=0,
+                    required_turns=0,
+                    daily_waste_kg=0.0,
+                    daily_volume_litres=0.0,
+                    available_capacity_litres=0.0,
+                    capacity_shortfall_litres=0.0,
+                    placements=[],
+                ),
+                total_capacity_demand_bins=0,
+                total_physical_bins=0,
                 placement_scenario="central",
                 boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
                 actual_boundary_spacing_m=0.0,
@@ -247,6 +270,28 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                             required_emptying_turns=RangeSchema(low=0, central=0, high=0),
                             daily_capacity_coverage_litres=0.0,
                             capacity_shortfall_litres=0.0,
+                            disposable=StreamRecommendationSchema(
+                                capacity_demand_bins=0,
+                                physical_bins=0,
+                                required_turns=0,
+                                daily_waste_kg=0.0,
+                                daily_volume_litres=0.0,
+                                available_capacity_litres=0.0,
+                                capacity_shortfall_litres=0.0,
+                                placements=[],
+                            ),
+                            recyclable=StreamRecommendationSchema(
+                                capacity_demand_bins=0,
+                                physical_bins=0,
+                                required_turns=0,
+                                daily_waste_kg=0.0,
+                                daily_volume_litres=0.0,
+                                available_capacity_litres=0.0,
+                                capacity_shortfall_litres=0.0,
+                                placements=[],
+                            ),
+                            total_capacity_demand_bins=0,
+                            total_physical_bins=0,
                             placement_scenario="central",
                             boundary_spacing_target_m=DEFAULT_BOUNDARY_SPACING_M,
                             actual_boundary_spacing_m=0.0,
@@ -285,6 +330,7 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                         location_name=loc_result.location_name,
                         coordinates=[p.longitude, p.latitude],
                         bin_index=p.bin_index,
+                        bin_type=p.bin_type,
                         bin_scenario=loc_result.placement_scenario,
                         boundary_distance_m=p.boundary_distance_m,
                     )
@@ -300,6 +346,30 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                     )
                     loc_warnings.append(discrepancy_msg)
                     warnings.append(discrepancy_msg)
+
+                disp_markers = [m for m in loc_markers if m.bin_type == "Disposable"]
+                rec_markers = [m for m in loc_markers if m.bin_type == "Recyclable"]
+
+                disposable_schema = StreamRecommendationSchema(
+                    capacity_demand_bins=loc_result.disposable_capacity_bins.central,
+                    physical_bins=loc_result.disposable_physical_bins.central,
+                    required_turns=loc_result.disposable_required_turns.central,
+                    daily_waste_kg=loc_result.disposable_waste_kg_per_day_central,
+                    daily_volume_litres=loc_result.disposable_volume_litres_per_day_central,
+                    available_capacity_litres=loc_result.disposable_capacity_coverage_litres,
+                    capacity_shortfall_litres=loc_result.disposable_capacity_shortfall_litres,
+                    placements=disp_markers,
+                )
+                recyclable_schema = StreamRecommendationSchema(
+                    capacity_demand_bins=loc_result.recyclable_capacity_bins.central,
+                    physical_bins=loc_result.recyclable_physical_bins.central,
+                    required_turns=loc_result.recyclable_required_turns.central,
+                    daily_waste_kg=loc_result.recyclable_waste_kg_per_day_central,
+                    daily_volume_litres=loc_result.recyclable_volume_litres_per_day_central,
+                    available_capacity_litres=loc_result.recyclable_capacity_coverage_litres,
+                    capacity_shortfall_litres=loc_result.recyclable_capacity_shortfall_litres,
+                    placements=rec_markers,
+                )
 
                 location_recommendations.append(
                     LocationBinRecommendation(
@@ -328,6 +398,10 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                         ),
                         daily_capacity_coverage_litres=loc_result.daily_capacity_coverage_litres,
                         capacity_shortfall_litres=loc_result.capacity_shortfall_litres,
+                        disposable=disposable_schema,
+                        recyclable=recyclable_schema,
+                        total_capacity_demand_bins=loc_result.capacity_bins.central,
+                        total_physical_bins=loc_result.recommended_bins.central,
                         placement_scenario=loc_result.placement_scenario,
                         boundary_spacing_target_m=loc_result.boundary_spacing_target_m,
                         actual_boundary_spacing_m=loc_result.actual_boundary_spacing_m,
@@ -351,6 +425,15 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
     peak_turns_low = max((rec.required_emptying_turns.low for rec in location_recommendations), default=0)
     peak_turns_central = max((rec.required_emptying_turns.central for rec in location_recommendations), default=0)
     peak_turns_high = max((rec.required_emptying_turns.high for rec in location_recommendations), default=0)
+
+    total_disp_bins = sum(
+        rec.disposable.physical_bins if rec.disposable else 0
+        for rec in location_recommendations
+    )
+    total_rec_bins = sum(
+        rec.recyclable.physical_bins if rec.recyclable else 0
+        for rec in location_recommendations
+    )
 
     placed_locations = [r for r in location_recommendations if r.placement_status == "placed"]
     if bin_model_failed or (not placed_locations and unsupported_locations):
@@ -381,8 +464,13 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 central=float(peak_turns_central),
                 high=float(peak_turns_high),
             ),
-            stream_counts=None,
-            stream_breakdown_available=False,
+            stream_counts={
+                "disposable": total_disp_bins,
+                "recyclable": total_rec_bins,
+                "general": total_disp_bins,
+                "food": 0,
+            },
+            stream_breakdown_available=True,
             locations=location_recommendations,
             bins=all_placed_markers,
             bin_capacity_litres=BIN_CAPACITY_LITRES,

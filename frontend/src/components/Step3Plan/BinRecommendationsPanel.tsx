@@ -88,8 +88,16 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
   );
   const recyclableBins = hasBreakdown ? (binRecommendations?.streamCounts?.recyclable ?? null) : null;
   const disposableBins = hasBreakdown
-    ? (binRecommendations?.streamCounts?.general ?? 0) + (binRecommendations?.streamCounts?.food ?? 0)
+    ? ((binRecommendations?.streamCounts?.disposable ??
+        ((binRecommendations?.streamCounts?.general ?? 0) + (binRecommendations?.streamCounts?.food ?? 0))))
     : null;
+
+  const dispTurns = locations.length > 0
+    ? Math.max(...locations.map((l) => l.disposable?.required_turns ?? 0))
+    : (peakTurns || 1);
+  const recTurns = locations.length > 0
+    ? Math.max(...locations.map((l) => l.recyclable?.required_turns ?? 0))
+    : (peakTurns || 1);
 
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
@@ -102,7 +110,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
           </h3>
           <span
             className="text-[#667267] hover:text-[#202820] cursor-help"
-            title="Physical bin count is limited by a 25 m perimeter spacing policy. When waste demand exceeds the available bin capacity, the model estimates the required emptying turns. Actual placement and capacity coverage may vary by location."
+            title="Physical bin count is limited by a 25 m perimeter spacing policy. When waste demand exceeds available physical bins, dynamic emptying turns are calculated separately for Disposable and Recyclable streams. Actual placement and capacity coverage may vary by location."
           >
             <Info className="w-3.5 h-3.5" />
           </span>
@@ -136,7 +144,9 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
               {totalBins}
             </span>
             <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-              {capacityDemand > totalBins ? `${capacityDemand} capacity demand` : 'placement bins'}
+              {hasBreakdown && recyclableBins !== null && disposableBins !== null
+                ? `${disposableBins} Disp · ${recyclableBins} Rec`
+                : (capacityDemand > totalBins ? `${capacityDemand} capacity demand` : 'placement bins')}
             </span>
           </div>
         </div>
@@ -157,20 +167,42 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
               {peakTurns}×
             </span>
             <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-              turn{peakTurns === 1 ? '' : 's'} / bin / day
+              peak turns / bin / day
             </span>
           </div>
         </div>
 
-        {/* Stream Breakdown Status Note */}
-        <div className="flex items-center justify-between px-2 py-1 bg-[#F7F9F5] rounded-lg border border-[#E1E8DE] text-[10px] text-[#667267]">
-          <span className="flex items-center gap-1">
-            <Recycle className="w-3 h-3 text-[#667267]" />
-            Stream breakdown
-          </span>
-          <span className="font-medium">
-            {hasBreakdown && recyclableBins !== null ? `${recyclableBins}R / ${disposableBins}D` : 'Unavailable'}
-          </span>
+        {/* Stream Breakdown 2-Column Card */}
+        <div className="grid grid-cols-2 gap-1.5 p-2 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE]">
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-blue-900">
+              <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />
+              <span>Disposable</span>
+            </div>
+            <div className="flex items-baseline justify-between pt-0.5">
+              <span className="text-sm font-black text-[#202820]">
+                {disposableBins !== null ? `${disposableBins} bins` : '—'}
+              </span>
+              <span className="text-[10px] text-[#667267] font-medium">
+                {dispTurns > 0 ? `${dispTurns}×/day` : '0/day'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-0.5 border-l border-[#E1E8DE] pl-2">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-900">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
+              <span>Recyclable</span>
+            </div>
+            <div className="flex items-baseline justify-between pt-0.5">
+              <span className="text-sm font-black text-[#202820]">
+                {recyclableBins !== null ? `${recyclableBins} bins` : '—'}
+              </span>
+              <span className="text-[10px] text-[#667267] font-medium">
+                {recTurns > 0 ? `${recTurns}×/day` : '0/day'}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Diagnostic Warnings */}

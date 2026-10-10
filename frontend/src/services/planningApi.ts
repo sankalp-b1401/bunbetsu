@@ -298,7 +298,7 @@ export async function requestCampusPlan(
       id: b.id,
       locationId: b.location_id,
       locationName: b.location_name,
-      binType: 'General', // Default scenario
+      binType: (b.bin_type || 'Disposable') as any,
       coordinates: b.coordinates,
       binIndex: b.bin_index,
       binScenario: b.bin_scenario,
@@ -327,11 +327,57 @@ export async function requestCampusPlan(
       boundary_inset_m: loc.boundary_inset_m,
       placement_warnings: loc.placement_warnings,
       placement_status: loc.placement_status,
+      disposable: loc.disposable
+        ? {
+            capacity_demand_bins: loc.disposable.capacity_demand_bins,
+            physical_bins: loc.disposable.physical_bins,
+            required_turns: loc.disposable.required_turns,
+            daily_waste_kg: loc.disposable.daily_waste_kg,
+            daily_volume_litres: loc.disposable.daily_volume_litres,
+            available_capacity_litres: loc.disposable.available_capacity_litres,
+            capacity_shortfall_litres: loc.disposable.capacity_shortfall_litres,
+            placements: (loc.disposable.placements || []).map((p) => ({
+              id: p.id,
+              locationId: p.location_id,
+              locationName: p.location_name,
+              binType: (p.bin_type || 'Disposable') as any,
+              coordinates: p.coordinates,
+              binIndex: p.bin_index,
+              binScenario: p.bin_scenario,
+              boundaryDistanceM: p.boundary_distance_m,
+              capacityLitres: rawBins.bin_capacity_litres,
+            })),
+          }
+        : undefined,
+      recyclable: loc.recyclable
+        ? {
+            capacity_demand_bins: loc.recyclable.capacity_demand_bins,
+            physical_bins: loc.recyclable.physical_bins,
+            required_turns: loc.recyclable.required_turns,
+            daily_waste_kg: loc.recyclable.daily_waste_kg,
+            daily_volume_litres: loc.recyclable.daily_volume_litres,
+            available_capacity_litres: loc.recyclable.available_capacity_litres,
+            capacity_shortfall_litres: loc.recyclable.capacity_shortfall_litres,
+            placements: (loc.recyclable.placements || []).map((p) => ({
+              id: p.id,
+              locationId: p.location_id,
+              locationName: p.location_name,
+              binType: (p.bin_type || 'Recyclable') as any,
+              coordinates: p.coordinates,
+              binIndex: p.bin_index,
+              binScenario: p.bin_scenario,
+              boundaryDistanceM: p.boundary_distance_m,
+              capacityLitres: rawBins.bin_capacity_litres,
+            })),
+          }
+        : undefined,
+      total_capacity_demand_bins: loc.total_capacity_demand_bins,
+      total_physical_bins: loc.total_physical_bins,
       bin_placements: (loc.bin_placements || []).map((p) => ({
         id: p.id,
         locationId: p.location_id,
         locationName: p.location_name,
-        binType: 'General',
+        binType: (p.bin_type || 'Disposable') as any,
         coordinates: p.coordinates,
         binIndex: p.bin_index,
         binScenario: p.bin_scenario,
@@ -340,12 +386,22 @@ export async function requestCampusPlan(
       })),
     }));
 
-    let streamCounts: { general: number; recyclable: number; food: number } | null = null;
+    let streamCounts: {
+      disposable: number;
+      recyclable: number;
+      general?: number;
+      food?: number;
+    } | null = null;
     if (rawBins.stream_breakdown_available && rawBins.stream_counts) {
+      const dispCount =
+        rawBins.stream_counts['disposable'] ??
+        ((rawBins.stream_counts['general'] || 0) + (rawBins.stream_counts['food'] || 0));
+      const recCount = rawBins.stream_counts['recyclable'] || 0;
       streamCounts = {
-        general: rawBins.stream_counts['general'] || 0,
-        recyclable: rawBins.stream_counts['recyclable'] || 0,
-        food: rawBins.stream_counts['food'] || 0,
+        disposable: dispCount,
+        recyclable: recCount,
+        general: dispCount,
+        food: 0,
       };
     }
 

@@ -134,11 +134,19 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
               {/* Recommended Bins Legend */}
               <div className="space-y-1.5 text-xs">
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded bg-[#004B20] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
+                  <div className="w-5 h-5 rounded bg-[#2563EB] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
                     <Trash2 className="w-3 h-3 text-white" />
                   </div>
                   <span className="text-[11px] font-medium text-[#202820]">
-                    Recommended bin (100L)
+                    Disposable bin (100L)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded bg-[#16A34A] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
+                    <Recycle className="w-3 h-3 text-white" />
+                  </div>
+                  <span className="text-[11px] font-medium text-[#202820]">
+                    Recyclable bin (100L)
                   </span>
                 </div>
               </div>

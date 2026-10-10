@@ -9,6 +9,7 @@ from bin_distribution_model.bin_distribution_model import (
     DEFAULT_BOUNDARY_SPACING_M,
     USABLE_BIN_CAPACITY_LITRES,
     WASTE_DENSITY_KG_PER_M3,
+    allocate_streams_largest_remainder,
     bins_for_daily_volume,
     predict_on_location_bins,
     round_half_up,
@@ -119,22 +120,46 @@ class TestBinDistributionModel(unittest.TestCase):
         expected_max = int(math.floor(location.rectangle_perimeter_m / 25.0))
         self.assertEqual(location.perimeter_spacing_max_bins, expected_max)
 
+    def test_allocate_streams_largest_remainder_direct(self):
+        """Direct tests for Hamilton's / Largest Remainder allocation."""
+        # Case A: Demand fits
+        self.assertEqual(allocate_streams_largest_remainder(8, 4, 15), (8, 4))
+        self.assertEqual(allocate_streams_largest_remainder(0, 0, 10), (0, 0))
+
+        # Case B: Demand exceeds perimeter capacity
+        # N_disp = 8, N_rec = 4, M = 5 -> scaled: 3.333, 1.667 -> remainders: 0.333, 0.667 -> (3, 2)
+        b_d, b_r = allocate_streams_largest_remainder(8, 4, 5)
+        self.assertEqual((b_d, b_r), (3, 2))
+        self.assertEqual(b_d + b_r, 5)
+
+        # Equal remainders, tie broken by higher original demand: 3 vs 1 with M=2 -> scaled: 1.5, 0.5 (equal 0.5 rem)
+        # N_disp = 3 > N_rec = 1 -> disposable gets remainder
+        self.assertEqual(allocate_streams_largest_remainder(3, 1, 2), (2, 0))
+
+        # Equal remainders, equal demand: 2 vs 2 with M=3 -> scaled: 1.5, 1.5 -> disposable preferred
+        self.assertEqual(allocate_streams_largest_remainder(2, 2, 3), (2, 1))
+
+        # Zero physical capacity
+        self.assertEqual(allocate_streams_largest_remainder(10, 5, 0), (0, 0))
+
     def test_demand_below_perimeter_limit_places_demand_bins(self):
-        """When M >= N, physical bins equal capacity demand and 1 turn is required."""
-        # Low footfall gives small N (e.g. 1-2 bins), while SQUARE fits ~15 bins
+        """When M >= N, physical bins equal capacity demand for each stream and 1 turn is required."""
         result = predict_on_location_bins(
             make_fest(footfall=50, duration=1),
             location_geometries={"Food Court": SQUARE},
         )
         location = result.locations[0]
         self.assertGreater(location.perimeter_spacing_max_bins, location.capacity_bins.central)
+        self.assertEqual(location.disposable_physical_bins.central, location.disposable_capacity_bins.central)
+        self.assertEqual(location.recyclable_physical_bins.central, location.recyclable_capacity_bins.central)
         self.assertEqual(location.recommended_bins.central, location.capacity_bins.central)
-        self.assertEqual(location.required_emptying_turns.central, 1)
+        self.assertEqual(location.disposable_required_turns.central, 1)
+        self.assertEqual(location.recyclable_required_turns.central, 1)
         self.assertEqual(len(location.bin_placements), location.recommended_bins.central)
         self.assertEqual(location.capacity_shortfall_litres, 0.0)
 
     def test_demand_above_perimeter_limit_caps_bins_and_calculates_turns(self):
-        """When N > M, physical bins are capped at M and dynamic turns are calculated."""
+        """When N > M, physical bins scale proportionally to M and stream turns are calculated."""
         # Very high footfall produces demand exceeding SQUARE perimeter capacity (~15 bins)
         result = predict_on_location_bins(
             make_fest(footfall=25000, duration=1),
@@ -142,29 +167,54 @@ class TestBinDistributionModel(unittest.TestCase):
         )
         location = result.locations[0]
         M = location.perimeter_spacing_max_bins
-        N = location.capacity_bins.central
-        self.assertGreater(N, M)
+        N_disp = location.disposable_capacity_bins.central
+        N_rec = location.recyclable_capacity_bins.central
+        B_disp = location.disposable_physical_bins.central
+        B_rec = location.recyclable_physical_bins.central
+
+        self.assertGreater(location.capacity_bins.central, M)
         self.assertEqual(location.recommended_bins.central, M)
+        self.assertEqual(B_disp + B_rec, M)
         self.assertEqual(len(location.bin_placements), M)
-        expected_turns = max(1, round_half_up(N / M))
-        self.assertEqual(location.required_emptying_turns.central, expected_turns)
+
+        # Turns calculated separately for each stream
+        expected_disp_turns = max(1, round_half_up(N_disp / B_disp))
+        expected_rec_turns = max(1, round_half_up(N_rec / B_rec))
+        self.assertEqual(location.disposable_required_turns.central, expected_disp_turns)
+        self.assertEqual(location.recyclable_required_turns.central, expected_rec_turns)
+        self.assertEqual(location.required_emptying_turns.central, max(expected_disp_turns, expected_rec_turns))
+
+        # Marker tagging matches stream allocation
+        disp_markers = [p for p in location.bin_placements if p.bin_type == "Disposable"]
+        rec_markers = [p for p in location.bin_placements if p.bin_type == "Recyclable"]
+        self.assertEqual(len(disp_markers), B_disp)
+        self.assertEqual(len(rec_markers), B_rec)
 
     def test_rounding_shortfall_reported(self):
-        """When nearest-integer rounding underestimates demand, shortfall is reported."""
-        # Set footfall so N / M produces a fractional value that rounds down
+        """When nearest-integer rounding underestimates demand, shortfall is reported per stream."""
         result = predict_on_location_bins(
             make_fest(footfall=25000, duration=1),
             location_geometries={"Food Court": SQUARE},
         )
         location = result.locations[0]
-        # Verify coverage formula
-        available = (
-            location.recommended_bins.central
+
+        disp_available = (
+            location.disposable_physical_bins.central
             * USABLE_BIN_CAPACITY_LITRES
-            * location.required_emptying_turns.central
+            * location.disposable_required_turns.central
         )
-        expected_shortfall = max(0.0, location.volume_litres_per_day_central - available)
-        self.assertAlmostEqual(location.capacity_shortfall_litres, expected_shortfall, places=1)
+        rec_available = (
+            location.recyclable_physical_bins.central
+            * USABLE_BIN_CAPACITY_LITRES
+            * location.recyclable_required_turns.central
+        )
+        expected_disp_shortfall = max(0.0, location.disposable_volume_litres_per_day_central - disp_available)
+        expected_rec_shortfall = max(0.0, location.recyclable_volume_litres_per_day_central - rec_available)
+        expected_total_shortfall = expected_disp_shortfall + expected_rec_shortfall
+
+        self.assertAlmostEqual(location.disposable_capacity_shortfall_litres, expected_disp_shortfall, places=1)
+        self.assertAlmostEqual(location.recyclable_capacity_shortfall_litres, expected_rec_shortfall, places=1)
+        self.assertAlmostEqual(location.capacity_shortfall_litres, expected_total_shortfall, places=1)
         if location.capacity_shortfall_litres > 0.001:
             self.assertTrue(any("shortfall" in w.lower() for w in location.placement_warnings))
 
@@ -282,6 +332,45 @@ class TestBinDistributionModel(unittest.TestCase):
             set(WASTE_DENSITY_KG_PER_M3),
             {"Food", "Plastic", "Paper", "Glass", "Others"},
         )
+
+    def test_stream_waste_categorization(self):
+        """Disposable corresponds to Food + Others; Recyclable corresponds to Plastic + Paper + Glass."""
+        result = predict_on_location_bins(
+            make_fest(footfall=1000, duration=1),
+            location_geometries={"Food Court": SQUARE},
+        )
+        location = result.locations[0]
+
+        # Sizing satisfies N = N_disp + N_rec
+        self.assertEqual(
+            location.capacity_bins.central,
+            location.disposable_capacity_bins.central + location.recyclable_capacity_bins.central,
+        )
+        # Physical bins sum to total recommended bins
+        self.assertEqual(
+            location.recommended_bins.central,
+            location.disposable_physical_bins.central + location.recyclable_physical_bins.central,
+        )
+        # Volume sums match total
+        self.assertAlmostEqual(
+            location.volume_litres_per_day_central,
+            location.disposable_volume_litres_per_day_central + location.recyclable_volume_litres_per_day_central,
+            places=1,
+        )
+
+    def test_stream_positive_demand_zero_bins_warning(self):
+        """When a stream has positive demand but receives 0 bins, it emits an explicit warning."""
+        # Custom tiny spacing or small polygon where M=0
+        result = predict_on_location_bins(
+            make_fest(footfall=500, duration=1, area=1.0),
+            location_geometries={"Food Court": TINY_SQUARE},
+        )
+        location = result.locations[0]
+        self.assertEqual(location.perimeter_spacing_max_bins, 0)
+        self.assertEqual(location.disposable_physical_bins.central, 0)
+        self.assertEqual(location.recyclable_physical_bins.central, 0)
+        # Warnings report unaccommodated demand
+        self.assertTrue(any("cannot accommodate" in w.lower() for w in location.placement_warnings))
 
 
 if __name__ == "__main__":

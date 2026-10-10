@@ -115,9 +115,25 @@ class BinPlacementMarker(BaseModel):
     location_name: str = Field(..., description="Location name")
     coordinates: list[float] = Field(..., description="[longitude, latitude] in WGS84")
     bin_index: int = Field(..., description="Index of placed bin at location (1-based)")
+    bin_type: str = Field(default="Disposable", description="Stream type: 'Disposable' or 'Recyclable'")
     bin_scenario: str = Field(default="central", description="Placement scenario (central)")
     boundary_distance_m: Optional[float] = Field(
         default=None, description="Distance from original polygon boundary in metres"
+    )
+
+
+class StreamRecommendationSchema(BaseModel):
+    """Recommendation metrics and markers for a specific waste stream."""
+
+    capacity_demand_bins: int = Field(..., description="Capacity-only bin demand before perimeter constraint")
+    physical_bins: int = Field(..., description="Allocated physical bin count")
+    required_turns: int = Field(..., description="Calculated emptying turns per bin per day")
+    daily_waste_kg: float = Field(default=0.0, description="Predicted daily waste mass in kg")
+    daily_volume_litres: float = Field(default=0.0, description="Predicted daily waste volume in litres")
+    available_capacity_litres: float = Field(default=0.0, description="Available daily volume capacity in litres")
+    capacity_shortfall_litres: float = Field(default=0.0, description="Uncovered daily volume in litres")
+    placements: list[BinPlacementMarker] = Field(
+        default_factory=list, description="Stream-specific placed bin markers"
     )
 
 
@@ -148,6 +164,18 @@ class LocationBinRecommendation(BaseModel):
     capacity_shortfall_litres: float = Field(
         default=0.0, description="Remaining uncovered daily waste volume in litres"
     )
+    disposable: Optional[StreamRecommendationSchema] = Field(
+        default=None, description="Disposable waste stream metrics and markers"
+    )
+    recyclable: Optional[StreamRecommendationSchema] = Field(
+        default=None, description="Recyclable waste stream metrics and markers"
+    )
+    total_capacity_demand_bins: Optional[int] = Field(
+        default=None, description="Total central capacity demand bins across streams"
+    )
+    total_physical_bins: Optional[int] = Field(
+        default=None, description="Total central physical bins across streams"
+    )
     placement_scenario: str = Field(default="central", description="Scenario used for marker coordinates")
     boundary_spacing_target_m: float = Field(default=25.0, description="Target boundary spacing in metres")
     actual_boundary_spacing_m: float = Field(default=0.0, description="Actual achieved boundary spacing in metres")
@@ -172,11 +200,11 @@ class BinRecommendationResponse(BaseModel):
     )
     stream_counts: Optional[dict[str, int]] = Field(
         default=None,
-        description="Stream-specific counts if modelled; None when spatial model only models total deployment.",
+        description="Stream-specific counts if modelled (e.g. {'disposable': X, 'recyclable': Y})",
     )
     stream_breakdown_available: bool = Field(
-        default=False,
-        description="False indicates that the spatial bin model produces total counts, not per-stream counts.",
+        default=True,
+        description="True indicates that stream-level breakdown is modelled.",
     )
     locations: list[LocationBinRecommendation] = Field(
         default_factory=list, description="Per-location model results and placement markers"

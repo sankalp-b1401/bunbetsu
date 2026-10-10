@@ -83,10 +83,61 @@ class BinPlacement:
     longitude: float
     latitude: float
     boundary_distance_m: float
+    bin_type: str = "Disposable"
 
     @property
     def coordinates(self) -> tuple[float, float]:
         return (self.longitude, self.latitude)
+
+
+def allocate_streams_largest_remainder(
+    n_disposable: int,
+    n_recyclable: int,
+    m: int,
+) -> tuple[int, int]:
+    """Allocate physical bins between disposable and recyclable streams using largest remainder.
+
+    Guarantees B_disposable + B_recyclable == m when m < (n_disposable + n_recyclable) and m > 0.
+    Uses Hamilton's / Largest Remainder method with deterministic tie-breaking:
+    1. Stream with larger fractional remainder receives the extra bin.
+    2. Ties broken by greater original capacity demand (n_disposable vs n_recyclable).
+    3. If still tied, disposable stream is preferred.
+    """
+    n_total = n_disposable + n_recyclable
+    if n_total == 0 or m <= 0:
+        return 0, 0
+
+    # Case A: Demand fits
+    if n_total <= m:
+        return n_disposable, n_recyclable
+
+    # Case B: Demand exceeds perimeter capacity
+    scaled_disp = m * n_disposable / n_total
+    scaled_rec = m * n_recyclable / n_total
+
+    floor_disp = int(math.floor(scaled_disp))
+    floor_rec = int(math.floor(scaled_rec))
+
+    remaining = m - (floor_disp + floor_rec)
+    if remaining > 0:
+        rem_disp = scaled_disp - floor_disp
+        rem_rec = scaled_rec - floor_rec
+
+        if abs(rem_disp - rem_rec) > 1e-9:
+            if rem_disp > rem_rec:
+                floor_disp += 1
+            else:
+                floor_rec += 1
+        else:
+            # Tie-break: higher original capacity demand
+            if n_disposable > n_recyclable:
+                floor_disp += 1
+            elif n_recyclable > n_disposable:
+                floor_rec += 1
+            else:
+                floor_disp += 1
+
+    return floor_disp, floor_rec
 
 
 @dataclass(frozen=True)
@@ -94,19 +145,49 @@ class LocationBinPrediction:
     location_name: str
     area: float
     activities: tuple[str, ...]
+
+    # Waste mass metrics by scenario (kg/day)
     waste_kg_per_day_low: float
     waste_kg_per_day_central: float
     waste_kg_per_day_high: float
+    disposable_waste_kg_per_day_central: float
+    recyclable_waste_kg_per_day_central: float
+
+    # Volume metrics by scenario (L/day)
     volume_litres_per_day_low: float
     volume_litres_per_day_central: float
     volume_litres_per_day_high: float
+    disposable_volume_litres_per_day_central: float
+    recyclable_volume_litres_per_day_central: float
+
+    # Capacity-only demands
     capacity_bins: BinCountRange
+    disposable_capacity_bins: BinCountRange
+    recyclable_capacity_bins: BinCountRange
+
+    # Perimeter constraint
     rectangle_perimeter_m: float
     perimeter_spacing_max_bins: int
+
+    # Recommended physical bins
     recommended_bins: BinCountRange
+    disposable_physical_bins: BinCountRange
+    recyclable_physical_bins: BinCountRange
+
+    # Variable emptying turns
     required_emptying_turns: BinCountRange
+    disposable_required_turns: BinCountRange
+    recyclable_required_turns: BinCountRange
+
+    # Coverage and shortfall diagnostics (central scenario)
     daily_capacity_coverage_litres: float
     capacity_shortfall_litres: float
+    disposable_capacity_coverage_litres: float
+    disposable_capacity_shortfall_litres: float
+    recyclable_capacity_coverage_litres: float
+    recyclable_capacity_shortfall_litres: float
+
+    # Placement and geometry
     bin_placements: tuple[BinPlacement, ...]
     placement_scenario: str
     boundary_spacing_target_m: float
@@ -120,6 +201,14 @@ class LocationBinPrediction:
         """Deprecated alias: perimeter spacing now defines an upper bound (max bins)."""
         return self.perimeter_spacing_max_bins
 
+    @property
+    def disposable_placements(self) -> tuple[BinPlacement, ...]:
+        return tuple(p for p in self.bin_placements if p.bin_type == "Disposable")
+
+    @property
+    def recyclable_placements(self) -> tuple[BinPlacement, ...]:
+        return tuple(p for p in self.bin_placements if p.bin_type == "Recyclable")
+
 
 @dataclass(frozen=True)
 class OnLocationBinPrediction:
@@ -131,6 +220,14 @@ class OnLocationBinPrediction:
     boundary_inset_m: float
     density_kg_per_m3: dict[str, float]
     assumptions: tuple[str, ...]
+
+    @property
+    def total_disposable_physical_bins(self) -> int:
+        return sum(loc.disposable_physical_bins.central for loc in self.locations)
+
+    @property
+    def total_recyclable_physical_bins(self) -> int:
+        return sum(loc.recyclable_physical_bins.central for loc in self.locations)
 
     @property
     def emptying_cycles_per_day(self) -> int:
@@ -396,71 +493,195 @@ def _make_location_prediction(
     perimeter_spacing_max_bins = int(math.floor(rectangle_perimeter_m / boundary_spacing_m))
 
     mass_ranges = allocation.composition_kg
-    total_volume_litres = {
+
+    # Stream categories:
+    # Disposable: Food + Others
+    # Recyclable: Plastic + Paper + Glass
+    disp_categories = ("Food", "Others")
+    rec_categories = ("Plastic", "Paper", "Glass")
+
+    # Volume per stream per scenario endpoint
+    disposable_volume_litres = {
         endpoint: volume_litres_from_mass_kg(
-            {category: getattr(mass_range, endpoint) for category, mass_range in mass_ranges.items()},
+            {category: getattr(mass_ranges[category], endpoint) for category in disp_categories if category in mass_ranges},
             densities,
         )
         for endpoint in ("low", "central", "high")
     }
-    # Sizing is based on average daily demand over the event duration
-    daily_volumes = {
-        endpoint: value / duration_days
-        for endpoint, value in total_volume_litres.items()
+    recyclable_volume_litres = {
+        endpoint: volume_litres_from_mass_kg(
+            {category: getattr(mass_ranges[category], endpoint) for category in rec_categories if category in mass_ranges},
+            densities,
+        )
+        for endpoint in ("low", "central", "high")
     }
+    total_volume_litres = {
+        endpoint: disposable_volume_litres[endpoint] + recyclable_volume_litres[endpoint]
+        for endpoint in ("low", "central", "high")
+    }
+
+    # Sizing is based on average daily demand over the event duration
+    disposable_daily_volumes = {
+        endpoint: value / duration_days for endpoint, value in disposable_volume_litres.items()
+    }
+    recyclable_daily_volumes = {
+        endpoint: value / duration_days for endpoint, value in recyclable_volume_litres.items()
+    }
+    daily_volumes = {
+        endpoint: value / duration_days for endpoint, value in total_volume_litres.items()
+    }
+
     daily_waste_kg = {
         endpoint: getattr(allocation.total_waste_kg, endpoint) / duration_days
         for endpoint in ("low", "central", "high")
     }
+    disposable_daily_waste_kg = {
+        endpoint: sum(getattr(mass_ranges[cat], endpoint) for cat in disp_categories if cat in mass_ranges) / duration_days
+        for endpoint in ("low", "central", "high")
+    }
+    recyclable_daily_waste_kg = {
+        endpoint: sum(getattr(mass_ranges[cat], endpoint) for cat in rec_categories if cat in mass_ranges) / duration_days
+        for endpoint in ("low", "central", "high")
+    }
 
-    # Capacity-only demand: N = ceil(daily_volume / usable_bin_capacity)
+    # Capacity-only demand per stream: N_s = ceil(daily_volume_s / usable_bin_capacity)
+    disp_capacity_counts = {
+        endpoint: bins_for_daily_volume(disposable_daily_volumes[endpoint], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES)
+        for endpoint in ("low", "central", "high")
+    }
+    rec_capacity_counts = {
+        endpoint: bins_for_daily_volume(recyclable_daily_volumes[endpoint], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES)
+        for endpoint in ("low", "central", "high")
+    }
+    total_capacity_counts = {
+        endpoint: disp_capacity_counts[endpoint] + rec_capacity_counts[endpoint]
+        for endpoint in ("low", "central", "high")
+    }
+
+    disposable_capacity_bins = BinCountRange(
+        disp_capacity_counts["low"],
+        disp_capacity_counts["central"],
+        disp_capacity_counts["high"],
+    )
+    recyclable_capacity_bins = BinCountRange(
+        rec_capacity_counts["low"],
+        rec_capacity_counts["central"],
+        rec_capacity_counts["high"],
+    )
     capacity_counts = BinCountRange(
-        bins_for_daily_volume(daily_volumes["low"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
-        bins_for_daily_volume(daily_volumes["central"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
-        bins_for_daily_volume(daily_volumes["high"], usable_bin_capacity_litres=USABLE_BIN_CAPACITY_LITRES),
+        total_capacity_counts["low"],
+        total_capacity_counts["central"],
+        total_capacity_counts["high"],
     )
 
-    # Final physical bin count: physical_bins = min(demand, M) when M > 0, else 0
-    def _calc_physical_bins(demand: int, max_bins: int, min_override: int) -> int:
-        if demand == 0 or max_bins == 0:
-            return 0
-        desired = max(demand, min_override) if min_override > 0 else demand
-        return min(desired, max_bins)
+    # Allocate physical bins between streams for each scenario endpoint
+    def _allocate_scenario(endpoint: str) -> tuple[int, int, int]:
+        n_d = disp_capacity_counts[endpoint]
+        n_r = rec_capacity_counts[endpoint]
+        n_tot = n_d + n_r
+        m = perimeter_spacing_max_bins
 
-    recommended_counts = BinCountRange(
-        _calc_physical_bins(capacity_counts.low, perimeter_spacing_max_bins, spatial_minimum_bins),
-        _calc_physical_bins(capacity_counts.central, perimeter_spacing_max_bins, spatial_minimum_bins),
-        _calc_physical_bins(capacity_counts.high, perimeter_spacing_max_bins, spatial_minimum_bins),
-    )
+        if n_tot == 0 or m == 0:
+            return 0, 0, 0
+
+        target_m = min(max(n_tot, spatial_minimum_bins), m) if spatial_minimum_bins > 0 else m
+
+        if n_tot <= target_m and (spatial_minimum_bins == 0 or target_m == n_tot):
+            # Case A: Demand fits
+            b_d = n_d
+            b_r = n_r
+        else:
+            # Proportional allocation to target_m using largest-remainder method
+            scaled_disp = target_m * n_d / n_tot
+            scaled_rec = target_m * n_r / n_tot
+            f_disp = int(math.floor(scaled_disp))
+            f_rec = int(math.floor(scaled_rec))
+            rem = target_m - (f_disp + f_rec)
+            if rem > 0:
+                r_disp = scaled_disp - f_disp
+                r_rec = scaled_rec - f_rec
+                if abs(r_disp - r_rec) > 1e-9:
+                    if r_disp > r_rec:
+                        f_disp += 1
+                    else:
+                        f_rec += 1
+                else:
+                    if n_d >= n_r:
+                        f_disp += 1
+                    else:
+                        f_rec += 1
+            b_d = f_disp
+            b_r = f_rec
+
+        return b_d, b_r, b_d + b_r
+
+    disp_phys_raw: dict[str, int] = {}
+    rec_phys_raw: dict[str, int] = {}
+    tot_phys_raw: dict[str, int] = {}
+    for ep in ("low", "central", "high"):
+        d, r, tot = _allocate_scenario(ep)
+        disp_phys_raw[ep] = d
+        rec_phys_raw[ep] = r
+        tot_phys_raw[ep] = tot
+
+    def _make_range(raw: dict[str, int]) -> BinCountRange:
+        low = min(raw["low"], raw["central"])
+        central = raw["central"]
+        high = max(raw["high"], raw["central"])
+        return BinCountRange(low, central, high)
+
+    disposable_physical_bins = _make_range(disp_phys_raw)
+    recyclable_physical_bins = _make_range(rec_phys_raw)
+    recommended_counts = _make_range(tot_phys_raw)
+
     central_count = recommended_counts.central
+    central_disp_physical = disposable_physical_bins.central
+    central_rec_physical = recyclable_physical_bins.central
 
-    # Variable emptying turns: turns = round_half_up(N / physical_bins) when N > M
-    def _calc_turns(demand: int, physical_bins: int, max_bins: int) -> int:
-        if demand == 0 or physical_bins == 0 or max_bins == 0:
+    # Variable emptying turns: turns_s = round_half_up(N_s / B_s) when B_s > 0
+    def _calc_stream_turns(demand: int, physical_bins: int) -> int:
+        if demand == 0 or physical_bins == 0:
             return 0
-        if max_bins >= demand:
+        if physical_bins >= demand:
             return 1
         return max(1, round_half_up(demand / physical_bins))
 
-    required_turns = BinCountRange(
-        _calc_turns(capacity_counts.low, recommended_counts.low, perimeter_spacing_max_bins),
-        _calc_turns(capacity_counts.central, recommended_counts.central, perimeter_spacing_max_bins),
-        _calc_turns(capacity_counts.high, recommended_counts.high, perimeter_spacing_max_bins),
-    )
+    disp_turns_raw = {
+        ep: _calc_stream_turns(disp_capacity_counts[ep], disp_phys_raw[ep])
+        for ep in ("low", "central", "high")
+    }
+    rec_turns_raw = {
+        ep: _calc_stream_turns(rec_capacity_counts[ep], rec_phys_raw[ep])
+        for ep in ("low", "central", "high")
+    }
+    tot_turns_raw = {
+        ep: max(disp_turns_raw[ep], rec_turns_raw[ep])
+        for ep in ("low", "central", "high")
+    }
 
-    # Daily capacity coverage & shortfall diagnostics (central scenario)
-    central_physical_bins = recommended_counts.central
-    central_turns = required_turns.central
-    available_daily_capacity_litres = (
-        central_physical_bins * USABLE_BIN_CAPACITY_LITRES * central_turns
-    )
-    central_volume = daily_volumes["central"]
-    capacity_shortfall_litres = max(0.0, central_volume - available_daily_capacity_litres)
+    disposable_required_turns = _make_range(disp_turns_raw)
+    recyclable_required_turns = _make_range(rec_turns_raw)
+    required_turns = _make_range(tot_turns_raw)
+
+    # Capacity coverage & shortfall diagnostics (central scenario)
+    disp_turns_central = disposable_required_turns.central
+    rec_turns_central = recyclable_required_turns.central
+
+    disp_coverage = central_disp_physical * USABLE_BIN_CAPACITY_LITRES * disp_turns_central
+    disp_vol_central = disposable_daily_volumes["central"]
+    disp_shortfall = max(0.0, disp_vol_central - disp_coverage)
+
+    rec_coverage = central_rec_physical * USABLE_BIN_CAPACITY_LITRES * rec_turns_central
+    rec_vol_central = recyclable_daily_volumes["central"]
+    rec_shortfall = max(0.0, rec_vol_central - rec_coverage)
+
+    total_coverage = disp_coverage + rec_coverage
+    total_shortfall = disp_shortfall + rec_shortfall
 
     lines, actual_inset = _inset_exterior_lines(polygon_m, boundary_inset_m)
 
     if central_count > 0:
-        placements, actual_spacing, _ = _sample_boundary(
+        base_placements, actual_spacing, _ = _sample_boundary(
             lines=lines,
             count=central_count,
             inverse=inverse,
@@ -469,6 +690,29 @@ def _make_location_prediction(
             forward_transform=forward,
             requested_inset_m=actual_inset,
         )
+        disp_target = central_disp_physical
+        disp_assigned = 0
+        stream_placements: list[BinPlacement] = []
+        for i, p in enumerate(base_placements):
+            # Interleave streams evenly around perimeter ring
+            if disp_assigned < disp_target and (
+                len(base_placements) - i <= disp_target - disp_assigned
+                or round_half_up((i + 1) * disp_target / len(base_placements)) > disp_assigned
+            ):
+                b_type = "Disposable"
+                disp_assigned += 1
+            else:
+                b_type = "Recyclable"
+            stream_placements.append(
+                BinPlacement(
+                    bin_index=p.bin_index,
+                    longitude=p.longitude,
+                    latitude=p.latitude,
+                    boundary_distance_m=p.boundary_distance_m,
+                    bin_type=b_type,
+                )
+            )
+        placements = tuple(stream_placements)
     else:
         placements = ()
         actual_spacing = 0.0
@@ -478,20 +722,39 @@ def _make_location_prediction(
         warnings.append(
             f"Location perimeter of {rectangle_perimeter_m:.1f} m cannot accommodate any bins under the "
             f"{boundary_spacing_m:.1f} m spacing policy (maximum physical bins = 0). "
-            f"Daily waste demand ({central_volume:.1f} L) cannot be accommodated on-location."
+            f"Daily waste demand ({daily_volumes['central']:.1f} L) cannot be accommodated on-location."
         )
     elif capacity_counts.central > perimeter_spacing_max_bins:
         warnings.append(
-            f"Waste demand requires {capacity_counts.central} bin capacity equivalents, exceeding physical "
-            f"perimeter capacity of {perimeter_spacing_max_bins} bin(s) under the {boundary_spacing_m:.1f} m spacing policy. "
-            f"{central_turns} emptying turn(s) per bin per day are required."
+            f"Waste demand requires {capacity_counts.central} bin capacity equivalents "
+            f"({disposable_capacity_bins.central} Disposable + {recyclable_capacity_bins.central} Recyclable), "
+            f"exceeding physical perimeter capacity of {perimeter_spacing_max_bins} bin(s) under the "
+            f"{boundary_spacing_m:.1f} m spacing policy. Dynamic emptying turns: "
+            f"{disp_turns_central} turn(s) for Disposable, {rec_turns_central} turn(s) for Recyclable."
         )
 
-    if capacity_shortfall_litres > 0.001:
+    if central_disp_physical == 0 and disposable_capacity_bins.central > 0:
         warnings.append(
-            f"Emptying turn rounding leaves a daily capacity shortfall of {capacity_shortfall_litres:.1f} L "
-            f"(predicted daily volume: {central_volume:.1f} L, available daily capacity: {available_daily_capacity_litres:.1f} L "
-            f"across {central_physical_bins} bin(s) with {central_turns} turn(s))."
+            f"Disposable stream has positive demand ({disp_vol_central:.1f} L, {disposable_capacity_bins.central} bins) "
+            "but received 0 physical bins under perimeter constraints."
+        )
+    if central_rec_physical == 0 and recyclable_capacity_bins.central > 0:
+        warnings.append(
+            f"Recyclable stream has positive demand ({rec_vol_central:.1f} L, {recyclable_capacity_bins.central} bins) "
+            "but received 0 physical bins under perimeter constraints."
+        )
+
+    if disp_shortfall > 0.001:
+        warnings.append(
+            f"Emptying turn rounding leaves a daily disposable capacity shortfall of {disp_shortfall:.1f} L "
+            f"(predicted: {disp_vol_central:.1f} L, available: {disp_coverage:.1f} L across "
+            f"{central_disp_physical} bin(s) with {disp_turns_central} turn(s))."
+        )
+    if rec_shortfall > 0.001:
+        warnings.append(
+            f"Emptying turn rounding leaves a daily recyclable capacity shortfall of {rec_shortfall:.1f} L "
+            f"(predicted: {rec_vol_central:.1f} L, available: {rec_coverage:.1f} L across "
+            f"{central_rec_physical} bin(s) with {rec_turns_central} turn(s))."
         )
 
     if central_count > 0 and actual_spacing < close_spacing_warning_m:
@@ -518,16 +781,30 @@ def _make_location_prediction(
         waste_kg_per_day_low=daily_waste_kg["low"],
         waste_kg_per_day_central=daily_waste_kg["central"],
         waste_kg_per_day_high=daily_waste_kg["high"],
+        disposable_waste_kg_per_day_central=round(disposable_daily_waste_kg["central"], 2),
+        recyclable_waste_kg_per_day_central=round(recyclable_daily_waste_kg["central"], 2),
         volume_litres_per_day_low=daily_volumes["low"],
         volume_litres_per_day_central=daily_volumes["central"],
         volume_litres_per_day_high=daily_volumes["high"],
+        disposable_volume_litres_per_day_central=round(disp_vol_central, 2),
+        recyclable_volume_litres_per_day_central=round(rec_vol_central, 2),
         capacity_bins=capacity_counts,
+        disposable_capacity_bins=disposable_capacity_bins,
+        recyclable_capacity_bins=recyclable_capacity_bins,
         rectangle_perimeter_m=round(rectangle_perimeter_m, 2),
         perimeter_spacing_max_bins=perimeter_spacing_max_bins,
         recommended_bins=recommended_counts,
+        disposable_physical_bins=disposable_physical_bins,
+        recyclable_physical_bins=recyclable_physical_bins,
         required_emptying_turns=required_turns,
-        daily_capacity_coverage_litres=round(available_daily_capacity_litres, 2),
-        capacity_shortfall_litres=round(capacity_shortfall_litres, 2),
+        disposable_required_turns=disposable_required_turns,
+        recyclable_required_turns=recyclable_required_turns,
+        daily_capacity_coverage_litres=round(total_coverage, 2),
+        capacity_shortfall_litres=round(total_shortfall, 2),
+        disposable_capacity_coverage_litres=round(disp_coverage, 2),
+        disposable_capacity_shortfall_litres=round(disp_shortfall, 2),
+        recyclable_capacity_coverage_litres=round(rec_coverage, 2),
+        recyclable_capacity_shortfall_litres=round(rec_shortfall, 2),
         bin_placements=placements,
         placement_scenario="central",
         boundary_spacing_target_m=boundary_spacing_m,
@@ -632,11 +909,12 @@ def predict_on_location_bins(
         assumptions=(
             "The existing waste predictor is used without modification.",
             "Waste predictions are total kilograms over the event duration and are divided by duration_days to estimate average daily demand.",
-            "Category-wise bulk-density references convert predicted mass to estimated volume; the broad 'Others' category uses a provisional 240 kg/m^3 proxy.",
-            "Each 100 L bin is treated as 80 L usable capacity per turn (100 L * 80% usable fill fraction).",
+            "Category-wise bulk-density references convert predicted mass to estimated volume; 'Food' and 'Others' form the Disposable stream, and 'Plastic', 'Paper', and 'Glass' form the Recyclable stream.",
+            "Each 100 L bin provides 80 L usable capacity per filling turn (100 L * 80% usable fill fraction).",
             "Physical bin placement is constrained by a 25 m perimeter spacing policy around the location's approximate best-fit rectangle.",
-            "When daily waste volume exceeds physical bin capacity under the 25 m spacing policy, dynamic emptying turns are calculated using nearest-integer rounding.",
-            "Coordinates are sampled along an inward-offset exterior boundary; polygon holes are not used as placement boundaries.",
+            "When waste demand exceeds perimeter capacity, bins are proportionally allocated between Disposable and Recyclable streams using the largest-remainder method.",
+            "Variable emptying turns are calculated separately for each stream using conventional half-up rounding.",
+            "Coordinates are sampled along an inward-offset exterior boundary respecting shared 25 m perimeter spacing between all bins.",
             "The 25 m default is Bunbetsu's configured planning policy, not a universal statutory standard.",
             "This model does not yet test access paths, doorways, utilities, emergency routes, slope, or exact pedestrian demand; review placements before operational use.",
         ),

@@ -178,8 +178,13 @@ async function runPlanningContractTests() {
           capacity_bins: { low: 10, central: 14, high: 18 },
           recommended_bins: { low: 14, central: 18, high: 22 },
           required_emptying_turns: { low: 1, central: 1, high: 2 },
-          stream_counts: null,
-          stream_breakdown_available: false,
+          stream_counts: {
+            disposable: 12,
+            recyclable: 6,
+            general: 12,
+            food: 0,
+          },
+          stream_breakdown_available: true,
           locations: [
             {
               id: 'loc-oat',
@@ -195,6 +200,28 @@ async function runPlanningContractTests() {
               daily_capacity_coverage_litres: 800.0,
               capacity_shortfall_litres: 0.0,
               spatial_minimum_bins: 0,
+              total_capacity_demand_bins: 8,
+              total_physical_bins: 6,
+              disposable: {
+                stream_name: 'Disposable',
+                total_volume_litres: 767.0,
+                daily_volume_litres: 255.67,
+                capacity_demand_bins: 4,
+                physical_bins: 4,
+                required_emptying_turns: 1,
+                daily_capacity_coverage_litres: 320.0,
+                capacity_shortfall_litres: 0.0,
+              },
+              recyclable: {
+                stream_name: 'Recyclable',
+                total_volume_litres: 412.0,
+                daily_volume_litres: 137.33,
+                capacity_demand_bins: 4,
+                physical_bins: 2,
+                required_emptying_turns: 1,
+                daily_capacity_coverage_litres: 160.0,
+                capacity_shortfall_litres: 0.0,
+              },
               placement_scenario: 'central',
               boundary_spacing_target_m: 25.0,
               actual_boundary_spacing_m: 24.5,
@@ -210,6 +237,7 @@ async function runPlanningContractTests() {
                   bin_index: 1,
                   bin_scenario: 'central',
                   boundary_distance_m: 1.5,
+                  bin_type: 'Disposable',
                 },
               ],
             },
@@ -223,6 +251,7 @@ async function runPlanningContractTests() {
               bin_index: 1,
               bin_scenario: 'central',
               boundary_distance_m: 1.5,
+              bin_type: 'Disposable',
             },
           ],
           bin_capacity_litres: 100.0,
@@ -274,8 +303,12 @@ async function runPlanningContractTests() {
   assert(planResult.prediction !== null, 'Result must contain predictionResult');
   assert(planResult.binRecommendations !== null, 'Result must contain binRecommendations');
   assert(planResult.binRecommendations?.totalBins === 18, 'Result must contain real backend total_bins (18)');
-  assert(planResult.binRecommendations?.streamBreakdownAvailable === false, 'Stream breakdown must be flagged as unavailable');
-  assert(planResult.binRecommendations?.streamCounts === null, 'streamCounts must be null when unavailable');
+  assert(planResult.binRecommendations?.streamBreakdownAvailable === true, 'Stream breakdown must be flagged as available');
+  assert(planResult.binRecommendations?.streamCounts?.disposable === 12, 'Stream counts must include disposable count (12)');
+  assert(planResult.binRecommendations?.streamCounts?.recyclable === 6, 'Stream counts must include recyclable count (6)');
+  assert(planResult.binRecommendations?.bins?.[0]?.binType === 'Disposable', 'Placed marker binType must be preserved as Disposable');
+  assert(planResult.binRecommendations?.locations?.[0]?.disposable?.physical_bins === 4, 'Location disposable bins preserved');
+  assert(planResult.binRecommendations?.locations?.[0]?.recyclable?.physical_bins === 2, 'Location recyclable bins preserved');
   assert(planResult.binRecommendations?.binCapacityLitres === 100.0, 'Bin capacity constant must be 100L');
   assert(planResult.binRecommendations?.usableBinCapacityLitres === 80.0, 'Usable bin capacity must be 80L');
   assert(planResult.binRecommendations?.boundarySpacingTargetM === 25.0, 'Boundary spacing target must be 25m');
