@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from models.waste_predictor_model.waste_predictor_model import (
     ACTIVITIES,
@@ -40,10 +40,12 @@ class LocationPredictionRequest(BaseModel):
 
 
 class WastePredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     total_footfall: int = Field(..., gt=0, description="Expected daily fest footfall")
     duration_days: int = Field(..., gt=0, description="Duration of the fest in days")
-    baseline_rate_kg_per_person_day: float = Field(
-        ..., gt=0, description="Baseline waste generation rate in kg/person/day"
+    campus_state: str = Field(
+        ..., min_length=1, description="Campus State or Union Territory for CPCB baseline lookup"
     )
     activities: Optional[list[str]] = Field(
         None, description="Optional distinct activities list. If omitted, derived from locations."
@@ -83,6 +85,11 @@ class HeatmapDataResponse(BaseModel):
 
 class WastePredictionResponse(BaseModel):
     success: bool = True
+    campus_state: str
+    baseline_rate_kg_per_person_day: float
+    baseline_source_year: str
+    baseline_rate_source: str
+    baseline_is_national_fallback: bool
     total_waste_kg: RangeSchema
     composition_kg: dict[str, RangeSchema]
     composition_percent: dict[str, float]
@@ -154,7 +161,7 @@ async def predict_waste(request: WastePredictionRequest) -> WastePredictionRespo
             total_footfall=request.total_footfall,
             duration_days=request.duration_days,
             activities=event_activities,
-            baseline_rate_kg_per_person_day=request.baseline_rate_kg_per_person_day,
+            campus_state=request.campus_state,
             locations=tuple(model_locations),
         )
         prediction: WastePrediction = predict(fest_input)
@@ -227,6 +234,11 @@ async def predict_waste(request: WastePredictionRequest) -> WastePredictionRespo
 
     return WastePredictionResponse(
         success=True,
+        campus_state=prediction.campus_state,
+        baseline_rate_kg_per_person_day=prediction.baseline_rate_kg_per_person_day,
+        baseline_source_year=prediction.baseline_source_year,
+        baseline_rate_source=prediction.baseline_rate_source,
+        baseline_is_national_fallback=prediction.baseline_is_national_fallback,
         total_waste_kg=serialize_range(prediction.total_waste_kg),
         composition_kg={
             cat: serialize_range(r) for cat, r in prediction.composition_kg.items()

@@ -49,6 +49,23 @@ def score_candidate(result: dict[str, Any]) -> int:
     return score
 
 
+def extract_state_from_address(address: dict[str, Any]) -> str | None:
+    """Extract structured state/UT from Nominatim address object.
+
+    Checks known administrative keys for states/UTs (state, province, region).
+    Does not treat a city, county, or district as a state.
+    """
+    if not isinstance(address, dict):
+        return None
+
+    for key in ("state", "province", "region"):
+        val = address.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    return None
+
+
 async def find_campus(query: str) -> dict[str, Any]:
     results = await search_place(query)
 
@@ -65,6 +82,12 @@ async def find_campus(query: str) -> dict[str, Any]:
 
     best = ranked[0]
 
+    address = best.get("address") or {}
+    state = extract_state_from_address(address)
+    country = address.get("country")
+    if isinstance(country, str):
+        country = country.strip()
+
     return {
         "osm_id": int(best["osm_id"]),
         "osm_type": best["osm_type"],
@@ -76,4 +99,7 @@ async def find_campus(query: str) -> dict[str, Any]:
         "category": best.get("type"),
         "osm_class": best.get("class"),
         "osm_type_tag": best.get("type"),
+        "state": state,
+        "country": country,
+        "address": address,
     }

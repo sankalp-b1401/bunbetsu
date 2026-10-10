@@ -25,12 +25,12 @@ SQUARE = {
 }
 
 
-def make_fest(footfall=100, duration=1, rate=0.01):
+def make_fest(footfall=100, duration=1, campus_state="Delhi"):
     return FestInput(
         total_footfall=footfall,
         duration_days=duration,
         activities=("Food Stalls",),
-        baseline_rate_kg_per_person_day=rate,
+        campus_state=campus_state,
         locations=(
             LocationInput(name="Food Court", activities=("Food Stalls",), area=500.0),
         ),
@@ -56,7 +56,7 @@ class TestBinDistributionModel(unittest.TestCase):
 
     def test_predicts_counts_and_returns_polygon_constrained_coordinates(self):
         result = predict_on_location_bins(
-            make_fest(footfall=1000, duration=2, rate=0.2),
+            make_fest(footfall=1000, duration=2),
             location_geometries={"Food Court": SQUARE},
         )
         self.assertEqual(len(result.locations), 1)
@@ -78,7 +78,7 @@ class TestBinDistributionModel(unittest.TestCase):
 
     def test_returned_coordinates_are_inside_original_polygon(self):
         result = predict_on_location_bins(
-            make_fest(footfall=1000, duration=2, rate=0.2),
+            make_fest(footfall=1000, duration=2),
             location_geometries={"Food Court": SQUARE},
         )
         polygon = shape(SQUARE)
@@ -87,9 +87,9 @@ class TestBinDistributionModel(unittest.TestCase):
             self.assertTrue(polygon.covers(Point(placement.longitude, placement.latitude)))
 
     def test_location_waste_is_divided_by_event_duration_before_bin_sizing(self):
-        one_day_fest = make_fest(footfall=1000, duration=1, rate=0.2)
+        one_day_fest = make_fest(footfall=1000, duration=1)
         existing_prediction = predict_waste(one_day_fest)
-        two_day_fest = make_fest(footfall=1000, duration=2, rate=0.2)
+        two_day_fest = make_fest(footfall=1000, duration=2)
 
         one_day = predict_on_location_bins(
             one_day_fest,
@@ -120,7 +120,7 @@ class TestBinDistributionModel(unittest.TestCase):
 
     def test_spatial_minimum_is_floor_not_added_to_capacity(self):
         result = predict_on_location_bins(
-            make_fest(footfall=100, duration=1, rate=0.01),
+            make_fest(footfall=100, duration=1),
             location_geometries={"Food Court": SQUARE},
             spatial_minimum_bins={"Food Court": 20},
         )

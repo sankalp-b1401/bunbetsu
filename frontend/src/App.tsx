@@ -34,7 +34,6 @@ export default function App() {
     festName: '',
     durationDays: 0,
     expectedFootfall: 0,
-    baselineRateKgPerPersonDay: 0.45, // Calibrated standard benchmark
   });
 
   // Final prediction result & loading states
@@ -158,6 +157,17 @@ export default function App() {
 
   // Execute waste prediction model
   const executePrediction = async () => {
+    if (!selectedCampus) {
+      setPredictionError('A campus must be selected.');
+      return;
+    }
+    if (!selectedCampus.state || !selectedCampus.state.trim()) {
+      setPredictionError(
+        'The selected campus does not have a determinable state/UT. Please select a campus with a known state to calculate predictions.'
+      );
+      return;
+    }
+
     setIsPredicting(true);
     setPredictionError(null);
 
@@ -165,7 +175,7 @@ export default function App() {
       const result = await requestWastePrediction({
         totalFootfall: eventDetails.expectedFootfall,
         durationDays: eventDetails.durationDays,
-        baselineRateKgPerPersonDay: eventDetails.baselineRateKgPerPersonDay || 0.45,
+        campusState: selectedCampus.state,
         locations,
       });
       setPredictionResult(result);
@@ -179,6 +189,16 @@ export default function App() {
 
   // Transition from Step 2 (Configure) to Step 3 (Plan)
   const handleTriggerPlan = () => {
+    if (!selectedCampus) {
+      setPredictionError('Please select a campus first.');
+      return;
+    }
+    if (!selectedCampus.state || !selectedCampus.state.trim()) {
+      setPredictionError(
+        'The selected campus does not have a determinable state/UT required for waste prediction baseline. Please select a campus with a valid state.'
+      );
+      return;
+    }
     if (!eventDetails.festName.trim()) {
       setPredictionError('Fest name is required.');
       return;

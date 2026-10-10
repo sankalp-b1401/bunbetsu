@@ -1,11 +1,12 @@
 import React from 'react';
 import { Calendar, Users, Clock, MapPin, Scale, ChevronRight } from 'lucide-react';
-import { Campus, EventDetails } from '../../types/bunbetsu';
+import { Campus, EventDetails, PredictionResult } from '../../types/bunbetsu';
 
 interface EventDetailsCardProps {
   campus: Campus;
   eventDetails: EventDetails;
   locationsCount: number;
+  prediction?: PredictionResult | null;
   onEditClick?: () => void;
 }
 
@@ -13,6 +14,7 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
   campus,
   eventDetails,
   locationsCount,
+  prediction,
   onEditClick,
 }) => {
   return (
@@ -99,7 +101,11 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
               Baseline rate
             </span>
             <span className="text-xs font-bold text-[#202820] truncate block mt-0.5">
-              {eventDetails.baselineRateKgPerPersonDay} kg/p/d
+              {prediction?.baseline_rate_kg_per_person_day
+                ? `${prediction.baseline_rate_kg_per_person_day} kg/p/d`
+                : campus.state
+                ? `${campus.state} (CPCB)`
+                : 'CPCB baseline'}
             </span>
           </div>
         </div>

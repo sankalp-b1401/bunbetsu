@@ -16,22 +16,18 @@ College-fest solid-waste prediction only.
 - Spatial activity/location quantities are internal allocations for heatmaps.
 
 ## Implemented equation
-W = F × R × I
+W = F × D × R × I
 
-F: total unique fest footfall
-R: baseline kg/person rate supplied to the model
+F: expected daily fest footfall
+D: number of fest days (total attendee-days = F × D)
+R: baseline kg/person/day rate resolved automatically from the CPCB (2020-21) state/UT dataset
 I: weighted activity-intensity factor
 
-The implementation deliberately does NOT multiply F by duration.
+## Baseline rate resolution
+The waste prediction baseline is automatically selected from the state/UT of the chosen campus using Central Pollution Control Board (CPCB) 2020-21 municipal solid-waste data (`cpcb_statewise_rates.py`).
+If a state is unrecognized or has no reported rate (such as Ladakh), the India national average fallback of 0.11907 kg/person/day is applied and flagged in the response metadata.
 
-## Important boundary
-The currently accessible project artifacts contain an older draft specification that used
-attendee-visits. That draft is not used here. This implementation follows the later
-project decision that footfall means total unique people.
-
-The model therefore requires `baseline_rate_kg_per_person` to be supplied with a
-denominator compatible with that unique-footfall definition. It does not invent a
-duration conversion.
+`campus_state` is provided as an input string; client-supplied baseline rates are rejected.
 
 ## No calibration
 This code does not fit or alter coefficients based on the validation dataset.

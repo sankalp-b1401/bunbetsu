@@ -70,7 +70,7 @@ def main():
             "Hackathon",
         ),
 
-        baseline_rate_kg_per_person_day=0.20,
+        campus_state="Uttar Pradesh",
 
         locations=(
             LocationInput(
@@ -119,6 +119,7 @@ def main():
 
     print("\nFEST INPUT")
     print("-" * 72)
+    print(f"Campus state            : {result.campus_state}")
     print(f"Expected daily footfall : {inputs.total_footfall:,} people")
     print(f"Duration                : {inputs.duration_days} days")
     print(
@@ -126,8 +127,13 @@ def main():
         f"{inputs.total_footfall * inputs.duration_days:,}"
     )
     print(
-        f"Baseline rate           : "
-        f"{inputs.baseline_rate_kg_per_person_day:.2f} kg/person/day"
+        f"Resolved baseline rate  : "
+        f"{result.baseline_rate_kg_per_person_day:.5f} kg/person/day "
+        f"({result.baseline_rate_source}, {result.baseline_source_year})"
+    )
+    print(
+        f"National fallback applied: "
+        f"{'Yes' if result.baseline_is_national_fallback else 'No'}"
     )
 
     print("\nSelected activities:")

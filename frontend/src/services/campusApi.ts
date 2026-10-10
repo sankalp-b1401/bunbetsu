@@ -20,6 +20,9 @@ export interface RawBackendCampus {
     type: string;
     coordinates: any;
   } | null;
+  state?: string | null;
+  country?: string | null;
+  address?: Record<string, unknown> | null;
   category?: string;
   osm_class?: string;
   osm_type_tag?: string;
@@ -36,8 +39,12 @@ export interface BackendCampusResponse {
 export function normalizeBackendCampus(raw: RawBackendCampus): Campus {
   const parts = (raw.display_name || '').split(',').map((p) => p.trim());
   const city = parts.length > 2 ? parts[parts.length - 3] : 'Campus City';
-  const state = parts.length > 1 ? parts[parts.length - 2] : '';
-  const country = parts.length > 0 ? parts[parts.length - 1] : 'India';
+
+  // Use structured backend state. Do not derive state from display_name.split(',').
+  const state = typeof raw.state === 'string' && raw.state.trim() ? raw.state.trim() : '';
+  const country = typeof raw.country === 'string' && raw.country.trim()
+    ? raw.country.trim()
+    : (parts.length > 0 ? parts[parts.length - 1] : 'India');
   const address = parts.length > 3 ? parts.slice(0, 2).join(', ') : raw.display_name;
 
   const hasValidPolygon = Boolean(
@@ -75,6 +82,7 @@ export function normalizeBackendCampus(raw: RawBackendCampus): Campus {
     category: raw.category,
     osm_class: raw.osm_class,
     osm_type_tag: raw.osm_type_tag,
+    structuredAddress: (raw.address as Record<string, unknown>) || undefined,
   };
 }
 

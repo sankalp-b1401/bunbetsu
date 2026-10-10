@@ -16,9 +16,188 @@ Important:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import math
 from enum import Enum
+import logging
+import math
+import re
 from typing import Mapping, Sequence
+
+try:
+    from .cpcb_statewise_rates import (
+        CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+        CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY,
+        CPCB_STATEWISE_RATES_SOURCE_YEAR,
+    )
+except ImportError:
+    from cpcb_statewise_rates import (
+        CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+        CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY,
+        CPCB_STATEWISE_RATES_SOURCE_YEAR,
+    )
+
+logger = logging.getLogger(__name__)
+
+# Known state / UT aliases mapping to canonical keys in CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY.
+STATE_ALIASES: dict[str, str] = {
+    "orissa": "Odisha",
+    "uttaranchal": "Uttarakhand",
+    "pondicherry": "Puducherry",
+    "andaman & nicobar islands": "Andaman and Nicobar Islands",
+    "andaman & nicobar": "Andaman and Nicobar Islands",
+    "andaman and nicobar": "Andaman and Nicobar Islands",
+    "dadra & nagar haveli and daman & diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "dadra and nagar haveli & daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "dadra & nagar haveli & daman & diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "dadra and nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
+    "dadra & nagar haveli": "Dadra and Nagar Haveli and Daman and Diu",
+    "daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "daman & diu": "Dadra and Nagar Haveli and Daman and Diu",
+    "jammu & kashmir": "Jammu and Kashmir",
+    "j&k": "Jammu and Kashmir",
+    "nct of delhi": "Delhi",
+    "national capital territory of delhi": "Delhi",
+    "new delhi": "Delhi",
+}
+
+
+@dataclass(frozen=True)
+class BaselineResolution:
+    rate_kg_per_person_day: float
+    matched_state: str | None
+    is_national_fallback: bool
+    source_year: str = CPCB_STATEWISE_RATES_SOURCE_YEAR
+    rate_source: str = "CPCB statewise rate"
+
+    def __float__(self) -> float:
+        return self.rate_kg_per_person_day
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (int, float)):
+            return math.isclose(self.rate_kg_per_person_day, float(other), rel_tol=1e-9, abs_tol=1e-9)
+        return super().__eq__(other)
+
+    def __mul__(self, other: float) -> float:
+        return self.rate_kg_per_person_day * other
+
+    def __rmul__(self, other: float) -> float:
+        return other * self.rate_kg_per_person_day
+
+
+def normalize_state_name(state_name: str) -> str:
+    """Normalize state name string for matching."""
+    s = state_name.strip()
+    return re.sub(r"\s+", " ", s)
+
+
+def canonicalize_state(state_name: str) -> str | None:
+    """Find canonical state name in CPCB dictionary using exact, alias, or case/punctuation match."""
+    normalized = normalize_state_name(state_name)
+    if not normalized:
+        return None
+
+    # 1. Exact match in dictionary
+    if normalized in CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY:
+        return normalized
+
+    lowered = normalized.lower()
+
+    # 2. Check explicit aliases
+    if lowered in STATE_ALIASES:
+        return STATE_ALIASES[lowered]
+
+    # 3. Case-insensitive dictionary match
+    for canonical in CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY:
+        if canonical.lower() == lowered:
+            return canonical
+
+    # 4. Normalize & to 'and' and re-check
+    replaced_amp = re.sub(r"\s*&\s*", " and ", lowered)
+    replaced_amp = re.sub(r"\s+", " ", replaced_amp).strip()
+    if replaced_amp in STATE_ALIASES:
+        return STATE_ALIASES[replaced_amp]
+    for canonical in CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY:
+        if canonical.lower() == replaced_amp:
+            return canonical
+
+    return None
+
+
+def get_baseline_rate_for_state(
+    campus_state: str,
+    allow_fallback: bool = True,
+) -> BaselineResolution:
+    """Resolve CPCB municipal solid-waste baseline rate for a given state/UT.
+
+    Args:
+        campus_state: Name of the state or union territory.
+        allow_fallback: If True, unknown states or states with None rate use the
+            CPCB national average fallback (0.11907 kg/person/day). If False,
+            raises ValueError.
+
+    Returns:
+        BaselineResolution containing the numeric rate and metadata.
+    """
+    if not isinstance(campus_state, str) or not campus_state.strip():
+        raise ValueError("Campus state cannot be empty.")
+
+    canonical_state = canonicalize_state(campus_state)
+
+    if canonical_state is not None:
+        raw_rate = CPCB_STATEWISE_RATES_KG_PER_PERSON_DAY.get(canonical_state)
+        if raw_rate is not None:
+            resolution = BaselineResolution(
+                rate_kg_per_person_day=raw_rate,
+                matched_state=canonical_state,
+                is_national_fallback=False,
+                source_year=CPCB_STATEWISE_RATES_SOURCE_YEAR,
+                rate_source=f"CPCB statewise rate ({canonical_state})",
+            )
+        else:
+            # Entry exists in dictionary but has None value (e.g. Ladakh)
+            if not allow_fallback:
+                raise ValueError(
+                    f"State/UT '{campus_state}' has no baseline rate reported in CPCB dataset."
+                )
+            logger.warning(
+                "No CPCB state rate available for '%s' in %s dataset; "
+                "using national average fallback of %s kg/person/day.",
+                campus_state,
+                CPCB_STATEWISE_RATES_SOURCE_YEAR,
+                CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+            )
+            resolution = BaselineResolution(
+                rate_kg_per_person_day=CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+                matched_state=canonical_state,
+                is_national_fallback=True,
+                source_year=CPCB_STATEWISE_RATES_SOURCE_YEAR,
+                rate_source="CPCB national average fallback",
+            )
+    else:
+        # Unknown state not found in dictionary or aliases
+        if not allow_fallback:
+            raise ValueError(
+                f"Unknown state/UT '{campus_state}' not found in CPCB dataset."
+            )
+        logger.warning(
+            "State/UT '%s' not recognized in CPCB dataset; "
+            "using national average fallback of %s kg/person/day.",
+            campus_state,
+            CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+        )
+        resolution = BaselineResolution(
+            rate_kg_per_person_day=CPCB_NATIONAL_AVERAGE_KG_PER_PERSON_DAY,
+            matched_state=None,
+            is_national_fallback=True,
+            source_year=CPCB_STATEWISE_RATES_SOURCE_YEAR,
+            rate_source="CPCB national average fallback",
+        )
+
+    if not math.isfinite(resolution.rate_kg_per_person_day) or resolution.rate_kg_per_person_day <= 0:
+        raise ValueError(
+            f"Resolved baseline rate must be finite and > 0, got {resolution.rate_kg_per_person_day}."
+        )
+
+    return resolution
 
 
 class WasteCategory(str, Enum):
@@ -102,8 +281,8 @@ class FestInput:
     duration_days: int
     activities: tuple[str, ...]
 
-    # kg of waste per person per day.
-    baseline_rate_kg_per_person_day: float
+    # Campus state or UT used for CPCB baseline lookup.
+    campus_state: str
 
     # Map-selected locations used for spatial allocation and heatmaps.
     locations: tuple[LocationInput, ...] = ()
@@ -136,10 +315,11 @@ class FestInput:
         for location in self.locations:
             location.validate()
 
-        if self.baseline_rate_kg_per_person_day <= 0:
-            raise ValueError(
-                "baseline_rate_kg_per_person_day must be > 0."
-            )
+        if not isinstance(self.campus_state, str) or not self.campus_state.strip():
+            raise ValueError("campus_state must not be empty.")
+
+        # Validate that the resolver can produce a rate
+        get_baseline_rate_for_state(self.campus_state)
 
 
 @dataclass(frozen=True)
@@ -249,6 +429,11 @@ class WastePrediction:
     assumptions: tuple[str, ...] = field(
         default_factory=tuple
     )
+    campus_state: str = ""
+    baseline_rate_kg_per_person_day: float = 0.0
+    baseline_source_year: str = ""
+    baseline_rate_source: str = ""
+    baseline_is_national_fallback: bool = False
 
 
 def weighted_intensity(
@@ -416,7 +601,7 @@ def predict(inputs: FestInput) -> WastePrediction:
 
         F = expected people attending the fest
         D = number of fest days
-        R = baseline waste generation rate in kg/person/day
+        R = baseline waste generation rate in kg/person/day (resolved from CPCB statewise dataset)
         I = weighted activity intensity
 
     The model assumes the expected footfall is applicable to
@@ -433,6 +618,9 @@ def predict(inputs: FestInput) -> WastePrediction:
 
     inputs.validate()
 
+    resolved_baseline = get_baseline_rate_for_state(inputs.campus_state)
+    baseline_rate = resolved_baseline.rate_kg_per_person_day
+
     intensity = weighted_intensity(inputs.activities)
 
     # Expected total attendee-day exposure.
@@ -443,15 +631,15 @@ def predict(inputs: FestInput) -> WastePrediction:
 
     total = Range(
         attendee_days
-        * inputs.baseline_rate_kg_per_person_day
+        * baseline_rate
         * intensity.low,
 
         attendee_days
-        * inputs.baseline_rate_kg_per_person_day
+        * baseline_rate
         * intensity.central,
 
         attendee_days
-        * inputs.baseline_rate_kg_per_person_day
+        * baseline_rate
         * intensity.high,
     )
 
@@ -555,11 +743,16 @@ def predict(inputs: FestInput) -> WastePrediction:
         activity_allocations=tuple(allocations),
         location_allocations=location_allocations,
         heatmap_data=heatmap_data,
+        campus_state=inputs.campus_state,
+        baseline_rate_kg_per_person_day=resolved_baseline.rate_kg_per_person_day,
+        baseline_source_year=resolved_baseline.source_year,
+        baseline_rate_source=resolved_baseline.rate_source,
+        baseline_is_national_fallback=resolved_baseline.is_national_fallback,
         assumptions=(
             "Footfall is the expected number of people attending the fest.",
             "The model assumes the expected footfall applies to each fest day.",
             "Duration converts expected footfall into total attendee-days.",
-            "Baseline rate is expressed in kg/person/day.",
+            f"Baseline waste rate is resolved automatically from the CPCB ({resolved_baseline.source_year}) state/UT baseline in kg/person/day.",
             "Activity weights are predefined model parameters for relative contribution, not attendance estimates.",
             "Current predefined activity weights are Food Stalls=5, Music Concert=4, Performing Arts=3, Literary & Fine Arts=2, Sports=1, Hackathon=1.",
             "Activity/location quantities are internal and should not be presented as precise measurements.",

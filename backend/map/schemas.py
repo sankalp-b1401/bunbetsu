@@ -16,3 +16,6 @@ class CampusLocation(BaseModel):
     category: Optional[str] = None
     osm_class: Optional[str] = None
     osm_type_tag: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    address: Optional[dict[str, Any]] = None

@@ -18,7 +18,7 @@ const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
 export interface RequestWastePredictionParams {
   totalFootfall: number;
   durationDays: number;
-  baselineRateKgPerPersonDay: number;
+  campusState: string;
   locations: CampusLocation[];
 }
 
@@ -28,7 +28,7 @@ export interface RequestWastePredictionParams {
 export async function requestWastePrediction(
   params: RequestWastePredictionParams
 ): Promise<PredictionResult> {
-  const { totalFootfall, durationDays, baselineRateKgPerPersonDay, locations } = params;
+  const { totalFootfall, durationDays, campusState, locations } = params;
 
   // 1. Client-side validation prior to network dispatch
   if (totalFootfall <= 0) {
@@ -37,8 +37,8 @@ export async function requestWastePrediction(
   if (durationDays <= 0) {
     throw new Error('Fest duration must be at least 1 day.');
   }
-  if (baselineRateKgPerPersonDay <= 0) {
-    throw new Error('Baseline waste generation rate must be positive.');
+  if (!campusState || !campusState.trim()) {
+    throw new Error('A campus with a valid state/UT must be selected before requesting waste prediction.');
   }
   if (!locations || locations.length === 0) {
     throw new Error('At least one configured location is required to calculate predictions.');
@@ -65,7 +65,7 @@ export async function requestWastePrediction(
   const payload: FestPredictionPayload = {
     total_footfall: totalFootfall,
     duration_days: durationDays,
-    baseline_rate_kg_per_person_day: baselineRateKgPerPersonDay,
+    campus_state: campusState.trim(),
     activities: distinctActivities,
     locations: locations.map((loc) => ({
       id: loc.id,
@@ -134,7 +134,7 @@ export async function requestWastePrediction(
 
   // 4. Map the model response into frontend presentation structures
   const totalAttendeeDays = totalFootfall * durationDays;
-  const baselineTotalKg = Math.round(totalAttendeeDays * baselineRateKgPerPersonDay);
+  const baselineTotalKg = Math.round(totalAttendeeDays * data.baseline_rate_kg_per_person_day);
 
   const totalWasteKg = {
     min: Math.round(data.total_waste_kg.low),
@@ -190,7 +190,7 @@ export async function requestWastePrediction(
   const contractFestInput: FestInput = {
     total_footfall: totalFootfall,
     duration_days: durationDays,
-    baseline_rate_kg_per_person_day: baselineRateKgPerPersonDay,
+    campus_state: data.campus_state || campusState.trim(),
     activities: distinctActivities,
     locations: locations.map((l) => ({
       name: l.name,
@@ -200,6 +200,11 @@ export async function requestWastePrediction(
   };
 
   return {
+    campus_state: data.campus_state,
+    baseline_rate_kg_per_person_day: data.baseline_rate_kg_per_person_day,
+    baseline_source_year: data.baseline_source_year,
+    baseline_rate_source: data.baseline_rate_source,
+    baseline_is_national_fallback: data.baseline_is_national_fallback,
     totalAttendeeDays,
     baselineTotalKg,
     total_waste_kg: data.total_waste_kg,

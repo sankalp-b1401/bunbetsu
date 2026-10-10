@@ -5,7 +5,7 @@ def test_complete_mock_response_structure():
     r=predict(FestInput(
         total_footfall=12000,duration_days=3,
         activities=("Food Stalls","Music Concert","Performing Arts","Literary & Fine Arts","Sports","Hackathon"),
-        baseline_rate_kg_per_person_day=.20,
+        campus_state="Uttar Pradesh",
         locations=(
             LocationInput("Main Ground",("Food Stalls","Music Concert"),8000),
             LocationInput("Open Food Court",("Food Stalls","Music Concert"),4000),
@@ -13,6 +13,10 @@ def test_complete_mock_response_structure():
             LocationInput("Sports Complex",("Sports",),6000),
             LocationInput("Innovation Block",("Hackathon",),3000),
         )))
+    assert r.campus_state == "Uttar Pradesh"
+    assert r.baseline_rate_kg_per_person_day == pytest.approx(0.06266)
+    assert r.baseline_source_year == "2020-21"
+    assert r.baseline_is_national_fallback is False
     expected={"Food","Plastic","Paper","Glass","Others"}
     assert r.total_waste_kg.low<=r.total_waste_kg.central<=r.total_waste_kg.high
     assert set(r.composition_kg)==set(r.composition_percent)==expected

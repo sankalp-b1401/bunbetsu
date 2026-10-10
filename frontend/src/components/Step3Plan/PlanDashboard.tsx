@@ -161,7 +161,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
 
             <div className="min-h-0" style={{ flex: '2 1 0%' }}>
               <BaselineSensitivityChart
-                currentBaselineRate={eventDetails.baselineRateKgPerPersonDay || 0.45}
+                currentBaselineRate={prediction ? prediction.baseline_rate_kg_per_person_day : 0}
                 currentTotalWasteKg={prediction ? Math.round(prediction.total_waste_kg.central) : 0}
                 sensitivitySeries={sensitivitySeries}
                 loading={predictionLoading}
@@ -198,6 +198,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 campus={campus}
                 eventDetails={eventDetails}
                 locationsCount={locations.length}
+                prediction={prediction}
                 onEditClick={onBackToConfigure}
               />
             </div>

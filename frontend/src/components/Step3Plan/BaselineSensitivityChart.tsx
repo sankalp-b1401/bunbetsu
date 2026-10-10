@@ -10,7 +10,7 @@ interface BaselineSensitivityChartProps {
 }
 
 export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> = ({
-  currentBaselineRate = 0.45,
+  currentBaselineRate = 0,
   currentTotalWasteKg = 0,
   sensitivitySeries,
   loading = false,
@@ -35,9 +35,9 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
 
-  // Domain configuration
-  const minRate = 0.2;
-  const maxRate = 0.7;
+  // Domain configuration supporting low CPCB baseline rates (e.g. 0.035 to 0.45)
+  const minRate = 0.0;
+  const maxRate = Math.max(0.5, currentBaselineRate > 0 ? Number((currentBaselineRate * 1.3).toFixed(2)) : 0.5);
 
   // X coordinate mapping
   const getX = (rate: number) => {
@@ -129,7 +129,7 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
           })}
 
           {/* X axis labels */}
-          {[0.2, 0.3, 0.4, 0.5, 0.6, 0.7].map((rate) => {
+          {[0.0, 0.1, 0.2, 0.3, 0.4, 0.5].map((rate) => {
             const xVal = getX(rate);
             return (
               <g key={rate}>
@@ -148,7 +148,7 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
                   fill="#667267"
                   fontWeight="600"
                 >
-                  {rate}
+                  {rate.toFixed(1)}
                 </text>
               </g>
             );
@@ -213,7 +213,7 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
             strokeWidth="2"
           />
 
-          {/* "Current: 0.45" Badge Callout above point */}
+          {/* Current baseline rate badge callout above point */}
           <g transform={`translate(${Math.max(35, Math.min(width - 65, currentX - 30))}, ${Math.max(1, currentY - 18)})`}>
             <rect
               width="60"
@@ -231,7 +231,7 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
               fill="#FFFFFF"
               fontWeight="bold"
             >
-              Current: {currentBaselineRate}
+              Current: {currentBaselineRate > 0 ? currentBaselineRate : '—'}
             </text>
           </g>
         </svg>
@@ -242,7 +242,9 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
         <div className="p-1.5 bg-[#F7F9F5] border border-[#E1E8DE] rounded-lg text-[9.5px] text-[#667267] flex items-start gap-1 leading-snug">
           <Info className="w-3 h-3 text-[#004B20] shrink-0 mt-0.5" />
           <span>
-            Benchmark: {currentBaselineRate} kg/person/day. Multi-rate sensitivity series pending service.
+            {currentBaselineRate > 0
+              ? `Benchmark: ${currentBaselineRate} kg/person/day. Multi-rate sensitivity series pending service.`
+              : 'CPCB state baseline benchmark. Multi-rate sensitivity series pending service.'}
           </span>
         </div>
       )}

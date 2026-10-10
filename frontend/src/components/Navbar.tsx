@@ -407,7 +407,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   id: 'tmpl-techfest',
                   name: '3-Day Technical Festival',
                   desc: 'High electronics, robotics packaging, and late-night food court volumes.',
-                  benchRate: '0.45 kg/attendee-day',
+                  benchRate: 'CPCB state baseline',
                   recommendedBins: '3-stream paired bins with dedicated e-waste drops',
                 },
                 {

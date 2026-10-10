@@ -53,6 +53,7 @@ export interface Campus {
   category?: string;
   osm_class?: string;
   osm_type_tag?: string;
+  structuredAddress?: Record<string, unknown>;
 }
 
 export interface EventDetails {
@@ -61,7 +62,6 @@ export interface EventDetails {
   endDate?: string;
   durationDays: number;
   expectedFootfall: number;
-  baselineRateKgPerPersonDay: number;
 }
 
 // Frozen Model Input Contract
@@ -75,7 +75,7 @@ export interface FestInput {
   total_footfall: number;
   duration_days: number;
   activities: ActivityType[];
-  baseline_rate_kg_per_person_day: number;
+  campus_state: string;
   locations: LocationInput[];
 }
 
@@ -89,7 +89,7 @@ export interface LocationPredictionPayload {
 export interface FestPredictionPayload {
   total_footfall: number;
   duration_days: number;
-  baseline_rate_kg_per_person_day: number;
+  campus_state: string;
   activities: ActivityType[];
   locations: LocationPredictionPayload[];
 }
@@ -138,6 +138,11 @@ export interface HeatmapData {
 
 export interface BackendPredictionResponse {
   success: boolean;
+  campus_state: string;
+  baseline_rate_kg_per_person_day: number;
+  baseline_source_year: string;
+  baseline_rate_source: string;
+  baseline_is_national_fallback: boolean;
   total_waste_kg: RangeModel;
   composition_kg: Record<string, RangeModel>;
   composition_percent: Record<string, number>;
@@ -150,6 +155,11 @@ export interface BackendPredictionResponse {
 }
 
 export interface PredictionResult {
+  campus_state: string;
+  baseline_rate_kg_per_person_day: number;
+  baseline_source_year: string;
+  baseline_rate_source: string;
+  baseline_is_national_fallback: boolean;
   totalAttendeeDays: number;
   baselineTotalKg: number;
   total_waste_kg: RangeModel;

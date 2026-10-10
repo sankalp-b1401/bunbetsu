@@ -196,14 +196,37 @@ export const PredictionPlanModal: React.FC<PredictionPlanModalProps> = ({
                 </div>
 
                 <div className="bg-[#F7F9F5] p-4.5 rounded-md border border-[#E1E8DE] space-y-1 shadow-2xs">
-                  <div className="font-heading text-xs text-[#667267] font-semibold uppercase tracking-wider">
-                    Baseline Benchmark
+                  <div className="font-heading text-xs text-[#667267] font-semibold uppercase tracking-wider flex items-center justify-between">
+                    <span>Baseline Benchmark</span>
+                    {result.baseline_source_year && (
+                      <span className="text-[10px] font-normal text-[#667267]">
+                        CPCB {result.baseline_source_year}
+                      </span>
+                    )}
                   </div>
                   <div className="font-heading text-2xl font-bold text-[#202820]">
-                    {payload.baseline_rate_kg_per_person_day} <span className="text-sm font-semibold text-[#667267]">kg/day</span>
+                    {typeof result.baseline_rate_kg_per_person_day === 'number' && result.baseline_rate_kg_per_person_day > 0 ? (
+                      <>
+                        {result.baseline_rate_kg_per_person_day}{' '}
+                        <span className="text-sm font-semibold text-[#667267]">kg/person/day</span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-normal text-amber-700">Unknown Rate</span>
+                    )}
                   </div>
                   <div className="text-[11px] text-[#667267]">
-                    Baseline pre-multiplier: {baselineTotalKg.toLocaleString()} kg
+                    {result.baseline_is_national_fallback ? (
+                      <span className="text-amber-800">
+                        CPCB national fallback · {result.campus_state || 'State'}
+                      </span>
+                    ) : (
+                      <span>
+                        CPCB state baseline · {result.campus_state || 'State'}
+                      </span>
+                    )}
+                    {typeof result.baseline_rate_kg_per_person_day === 'number' && (
+                      <span> · Pre-multiplier: {baselineTotalKg.toLocaleString()} kg</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -478,6 +501,11 @@ export const PredictionPlanModal: React.FC<PredictionPlanModalProps> = ({
                 <pre className="p-3 bg-[#202820] text-[#70D000] border border-[#E1E8DE]/20 rounded-md text-xs font-mono overflow-x-auto max-h-[220px]">
                   {JSON.stringify(
                     {
+                      campus_state: result.campus_state,
+                      baseline_rate_kg_per_person_day: result.baseline_rate_kg_per_person_day,
+                      baseline_source_year: result.baseline_source_year,
+                      baseline_rate_source: result.baseline_rate_source,
+                      baseline_is_national_fallback: result.baseline_is_national_fallback,
                       total_waste_kg: total_waste_kg,
                       composition_kg: result.composition_kg,
                       composition_percent: composition_percent,
