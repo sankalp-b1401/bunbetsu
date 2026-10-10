@@ -23,6 +23,7 @@ interface EventConfigurationProps {
   onAddCustomLocation: (newLocation: CampusLocation) => void;
   onUpdateLocation: (updatedLocation: CampusLocation) => void;
   onDeleteLocation: (locationId: string) => void;
+  onDeleteArea?: (areaId: string) => void;
   onTriggerPlan: () => void;
   isPredicting?: boolean;
   predictionError?: string | null;
@@ -38,6 +39,7 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
   onAddCustomLocation,
   onUpdateLocation,
   onDeleteLocation,
+  onDeleteArea,
   onTriggerPlan,
   isPredicting = false,
   predictionError = null,
@@ -127,6 +129,7 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
             onAddCustomLocation={onAddCustomLocation}
             onUpdateLocation={onUpdateLocation}
             onDeleteLocation={onDeleteLocation}
+            onDeleteArea={onDeleteArea}
             onRequestOpenAddAreaModal={requestAddArea}
             onClearRequestAddArea={() => setRequestAddArea(null)}
             showToolbar={true}

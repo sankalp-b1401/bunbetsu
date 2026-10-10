@@ -59,6 +59,7 @@ export default function App() {
     const initialPool: CampusLocation[] = (newCampus.defaultLocations || []).map((loc) => ({
       ...loc,
       activities: [] as ActivityType[],
+      source: 'preset' as const,
     }));
     setAllCampusLocations(initialPool);
     setLocations([]);
@@ -101,7 +102,7 @@ export default function App() {
     }
   };
 
-  // Unselect location: removes from active event plan
+  // Unselect location: removes from active event plan (map area remains available)
   const handleDeleteLocation = (locationId: string) => {
     setLocations((prev) => prev.filter((l) => l.id !== locationId));
     setAllCampusLocations((prev) =>
@@ -116,17 +117,50 @@ export default function App() {
     }
   };
 
+  // Delete map area: permanently erases a user-drawn map area from campus pool and event plan
+  const handleDeleteArea = (areaId: string) => {
+    const target =
+      allCampusLocations.find((l) => l.id === areaId) ||
+      locations.find((l) => l.id === areaId);
+    if (!target) return;
+
+    // Guard: preset campus zones cannot be deleted
+    if (target.source === 'preset') return;
+
+    // Permanently remove from master map area pool
+    setAllCampusLocations((prev) => prev.filter((l) => l.id !== areaId));
+
+    // Remove from configured event locations if present and mark plan stale
+    const wasConfigured = locations.some((l) => l.id === areaId);
+    setLocations((prev) => prev.filter((l) => l.id !== areaId));
+    if (wasConfigured && (predictionResult || binRecommendations || routeResult)) {
+      setIsPlanStale(true);
+    }
+
+    if (selectedLocationId === areaId) {
+      setSelectedLocationId(null);
+    }
+    if (planningError) setPlanningError(null);
+  };
+
   // Add a newly created custom location from drawing / map modal
   const handleAddCustomLocation = (newLocation: CampusLocation) => {
+    const customLoc: CampusLocation = {
+      ...newLocation,
+      source: 'user_drawn',
+      tags: newLocation.tags?.includes('Custom Area')
+        ? newLocation.tags
+        : [...(newLocation.tags || []), 'Custom Area'],
+    };
     setAllCampusLocations((prev) => {
-      const filtered = prev.filter((l) => l.id !== newLocation.id);
-      return [...filtered, newLocation];
+      const filtered = prev.filter((l) => l.id !== customLoc.id);
+      return [...filtered, customLoc];
     });
     setLocations((prev) => {
-      const filtered = prev.filter((l) => l.id !== newLocation.id);
-      return [...filtered, newLocation];
+      const filtered = prev.filter((l) => l.id !== customLoc.id);
+      return [...filtered, customLoc];
     });
-    setSelectedLocationId(newLocation.id);
+    setSelectedLocationId(customLoc.id);
     if (planningError) setPlanningError(null);
     if (predictionResult || binRecommendations || routeResult) {
       setIsPlanStale(true);
@@ -315,6 +349,7 @@ export default function App() {
             onAddCustomLocation={handleAddCustomLocation}
             onUpdateLocation={handleUpdateLocation}
             onDeleteLocation={handleDeleteLocation}
+            onDeleteArea={handleDeleteArea}
             onTriggerPlan={handleTriggerPlan}
             isPredicting={isPlanning}
             predictionError={planningError}

@@ -16,9 +16,7 @@ import { PlanMapPanel } from './PlanMapPanel';
 import { WasteOverviewCards } from './WasteOverviewCards';
 import { EventDetailsCard } from './EventDetailsCard';
 import { BinRecommendationsPanel } from './BinRecommendationsPanel';
-import { BaselineSensitivityChart } from './BaselineSensitivityChart';
-// Temporarily hidden per wireframe specification:
-// import { RouteInsightsPanel } from './RouteInsightsPanel';
+import { PedestrianRoutesCard } from './PedestrianRoutesCard';
 import {
   AlertCircle,
   RotateCcw,
@@ -149,7 +147,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
       {/* MAIN DASHBOARD CONTENT (FIT TO VIEWPORT 3-COLUMN GRID) */}
       {!predictionLoading && (
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-stretch">
-          {/* Column 1: Map Layers & Baseline Graph (Left, 3 cols) */}
+          {/* Column 1: Map Layers & Pedestrian Routes (Left, 3 cols) */}
           <div className="lg:col-span-3 flex flex-col gap-2.5 h-full min-h-0">
             <div className="min-h-0" style={{ flex: '3 1 0%' }}>
               <PlanLayerControls
@@ -172,11 +170,11 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             </div>
 
             <div className="min-h-0" style={{ flex: '2 1 0%' }}>
-              <BaselineSensitivityChart
-                currentBaselineRate={prediction ? prediction.baseline_rate_kg_per_person_day : 0}
-                currentTotalWasteKg={prediction ? Math.round(prediction.total_waste_kg.central) : 0}
-                sensitivitySeries={sensitivitySeries}
-                loading={predictionLoading}
+              <PedestrianRoutesCard
+                routeResult={routeResult}
+                routesLoading={routesLoading}
+                routesError={routesError}
+                isStale={routesStale}
               />
             </div>
           </div>
@@ -216,11 +214,12 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             </div>
           </div>
 
-          {/* Column 3: Key Waste Estimates & Recommended Bins (Right, 3 cols) */}
+          {/* Column 3: Key Waste Estimates Carousel & Recommended Bins (Right, 3 cols) */}
           <div className="lg:col-span-3 flex flex-col gap-2.5 h-full min-h-0">
             <div className="min-h-0" style={{ flex: '2 1 0%' }}>
               <WasteOverviewCards
                 prediction={prediction}
+                sensitivitySeries={sensitivitySeries}
                 loading={predictionLoading}
               />
             </div>

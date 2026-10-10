@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
-import { Plus, Minus, Navigation, ShieldCheck, Check, X } from "lucide-react";
+import { Plus, Minus, Navigation, ShieldCheck, Check, X, Trash2, RotateCcw } from "lucide-react";
 import {
   Campus,
   CampusLocation,
@@ -11,12 +11,18 @@ import {
   WasteCategory,
   HeatmapData,
   BinRecommendationResult,
+  MapMode,
 } from "../../types/bunbetsu";
 import { ACTIVITIES, ActivityIcon } from "../../constants/activities";
-import { calculatePolygonAreaM2, getPolygonCenter } from "../../utils/geoUtils";
+import {
+  calculatePolygonAreaM2,
+  getPolygonCenter,
+  closePolygonRing,
+  isRingClosed,
+  validatePolygonRing,
+} from "../../utils/geoUtils";
 import { ActivityLegend } from "./ActivityLegend";
 import { MapToolbar } from "./MapToolbar";
-import { RouteLegend } from "./RouteLegend";
 
 // Ensure MapLibre Web Worker resolves correctly in Vite / Cloud Run environments
 if (typeof window !== "undefined") {
@@ -31,6 +37,7 @@ if (typeof window !== "undefined") {
 
 const DEFAULT_MAP_CENTER: [number, number] = [78.9629, 20.5937]; // Center of India overview
 const DEFAULT_MAP_ZOOM = 4.8;
+const SNAP_TOLERANCE_PX = 16; // Screen-space distance tolerance (pixels) for closing polygon
 
 interface CampusMapProps {
   campus: Campus | null;
@@ -44,6 +51,7 @@ interface CampusMapProps {
   onUpdateLocation?: (updatedLocation: CampusLocation) => void;
   onStartEditLocation?: (locationId: string) => void;
   onDeleteLocation?: (locationId: string) => void;
+  onDeleteArea?: (areaId: string) => void;
   onRequestOpenAddAreaModal?: {
     id?: string;
     name?: string;
@@ -89,6 +97,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   onUpdateLocation,
   onStartEditLocation,
   onDeleteLocation,
+  onDeleteArea,
   onRequestOpenAddAreaModal = null,
   onClearRequestAddArea,
   showToolbar = false,
@@ -123,13 +132,16 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   const userLocationMarkerRef = useRef<maplibregl.Marker[]>([]);
   const binMarkersRef = useRef<maplibregl.Marker[]>([]);
 
-  const [currentMode, setCurrentMode] = useState<"select" | "addArea">(
-    "select",
-  );
-  const currentModeRef = useRef<"select" | "addArea">(currentMode);
+  const [currentMode, setCurrentMode] = useState<MapMode>("select");
+  const currentModeRef = useRef<MapMode>(currentMode);
   useEffect(() => {
     currentModeRef.current = currentMode;
   }, [currentMode]);
+
+  const onDeleteAreaRef = useRef(onDeleteArea);
+  useEffect(() => {
+    onDeleteAreaRef.current = onDeleteArea;
+  }, [onDeleteArea]);
 
   const locationsRef = useRef<CampusLocation[]>(locations);
   useEffect(() => {
@@ -256,7 +268,76 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
   // Polygon drawing state
   const [draftPoints, setDraftPoints] = useState<number[][]>([]);
+  const draftPointsRef = useRef<number[][]>([]);
+  useEffect(() => {
+    draftPointsRef.current = draftPoints;
+  }, [draftPoints]);
+
+  const [isDraftClosed, setIsDraftClosed] = useState(false);
+  const isDraftClosedRef = useRef(false);
+  useEffect(() => {
+    isDraftClosedRef.current = isDraftClosed;
+  }, [isDraftClosed]);
+
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Delete Area Tool State
+  const [pendingDeleteArea, setPendingDeleteArea] = useState<{
+    id: string;
+    name: string;
+    isConfiguredLocation: boolean;
+  } | null>(null);
+  const [presetDeleteWarning, setPresetDeleteWarning] = useState<string | null>(null);
+
+  const setHoveredDeleteFeature = useCallback((geom: any | null) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource("delete-hover-src") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (geom) {
+      src.setData({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: geom,
+          },
+        ],
+      });
+    } else {
+      src.setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+    }
+  }, []);
+
+  const handleInitiateDeleteArea = useCallback((locId: string) => {
+    const allCampusLocs = campusRef.current?.defaultLocations || [];
+    const loc =
+      allCampusLocs.find((l) => l.id === locId) ||
+      locationsRef.current.find((l) => l.id === locId);
+    if (!loc) return;
+
+    const isUserDrawn =
+      loc.source === "user_drawn" || loc.tags?.includes("Custom Area");
+    if (!isUserDrawn) {
+      setPresetDeleteWarning(
+        "Preset campus zones cannot be deleted. Only user-created map areas can be removed.",
+      );
+      return;
+    }
+
+    const isConfiguredLocation = locationsRef.current.some(
+      (l) => l.id === locId,
+    );
+    setPendingDeleteArea({
+      id: loc.id,
+      name: loc.name,
+      isConfiguredLocation,
+    });
+  }, []);
 
   // New Area Configuration Modal State
   const [pendingNewArea, setPendingNewArea] = useState<{
@@ -661,43 +742,62 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         // Click on zone polygon (handles both base fill and heatmap fill)
         const handleZoneClick = (e: maplibregl.MapLayerMouseEvent) => {
           if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current === "deleteArea") {
+            const locId = e.features?.[0]?.properties?.id;
+            if (locId) {
+              handleInitiateDeleteArea(locId);
+            }
+            return;
+          }
           if (e.features && e.features[0]?.properties?.id) {
             onSelectLocationRef.current?.(e.features[0].properties.id);
+          }
+        };
+
+        const handleZoneHover = (e: maplibregl.MapLayerMouseEvent) => {
+          if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current === "deleteArea") {
+            const locId = e.features?.[0]?.properties?.id;
+            const allCampusLocs = campusRef.current?.defaultLocations || [];
+            const loc =
+              allCampusLocs.find((l) => l.id === locId) ||
+              locationsRef.current.find((l) => l.id === locId);
+            const isUserDrawn =
+              loc?.source === "user_drawn" || loc?.tags?.includes("Custom Area");
+            if (isUserDrawn && e.features?.[0]?.geometry) {
+              setHoveredDeleteFeature(e.features[0].geometry);
+              map.getCanvas().style.cursor = "pointer";
+            } else {
+              setHoveredDeleteFeature(null);
+              map.getCanvas().style.cursor = "not-allowed";
+            }
+            return;
+          }
+          map.getCanvas().style.cursor = "pointer";
+        };
+
+        const handleZoneLeave = () => {
+          if (currentModeRef.current === "addArea") {
+            map.getCanvas().style.cursor = "crosshair";
+            map.getCanvasContainer().style.cursor = "crosshair";
+          } else if (currentModeRef.current === "deleteArea") {
+            setHoveredDeleteFeature(null);
+            map.getCanvas().style.cursor = "";
+            map.getCanvasContainer().style.cursor = "";
+          } else {
+            map.getCanvas().style.cursor = "";
+            map.getCanvasContainer().style.cursor = "";
           }
         };
 
         map.on("click", "location-zones-fill", handleZoneClick);
         map.on("click", "location-heatmap-fill", handleZoneClick);
 
-        map.on("mouseenter", "location-zones-fill", () => {
-          if (currentModeRef.current !== "addArea") {
-            map.getCanvas().style.cursor = "pointer";
-          }
-        });
-        map.on("mouseenter", "location-heatmap-fill", () => {
-          if (currentModeRef.current !== "addArea") {
-            map.getCanvas().style.cursor = "pointer";
-          }
-        });
+        map.on("mouseenter", "location-zones-fill", handleZoneHover);
+        map.on("mouseenter", "location-heatmap-fill", handleZoneHover);
 
-        map.on("mouseleave", "location-zones-fill", () => {
-          if (currentModeRef.current === "addArea") {
-            map.getCanvas().style.cursor = "crosshair";
-            map.getCanvasContainer().style.cursor = "crosshair";
-          } else {
-            map.getCanvas().style.cursor = "";
-            map.getCanvasContainer().style.cursor = "";
-          }
-        });
-        map.on("mouseleave", "location-heatmap-fill", () => {
-          if (currentModeRef.current === "addArea") {
-            map.getCanvas().style.cursor = "crosshair";
-            map.getCanvasContainer().style.cursor = "crosshair";
-          } else {
-            map.getCanvas().style.cursor = "";
-            map.getCanvasContainer().style.cursor = "";
-          }
-        });
+        map.on("mouseleave", "location-zones-fill", handleZoneLeave);
+        map.on("mouseleave", "location-heatmap-fill", handleZoneLeave);
       }
 
       // 2b. Available unselected campus locations
@@ -765,6 +865,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
         map.on("click", "available-zones-fill", (e) => {
           if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current === "deleteArea") {
+            const locId = e.features?.[0]?.properties?.id;
+            if (locId) {
+              handleInitiateDeleteArea(locId);
+            }
+            return;
+          }
           if (!onAddCustomLocationRef.current && !onRequestOpenAddAreaModal)
             return;
           if (e.features && e.features[0]?.properties?.id) {
@@ -777,20 +884,69 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           }
         });
 
-        map.on("mouseenter", "available-zones-fill", () => {
-          if (currentModeRef.current !== "addArea") {
-            map.getCanvas().style.cursor = "pointer";
+        map.on("mouseenter", "available-zones-fill", (e) => {
+          if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current === "deleteArea") {
+            const locId = e.features?.[0]?.properties?.id;
+            const allCampusLocs = campusRef.current?.defaultLocations || [];
+            const loc = allCampusLocs.find((l) => l.id === locId);
+            const isUserDrawn =
+              loc?.source === "user_drawn" || loc?.tags?.includes("Custom Area");
+            if (isUserDrawn && e.features?.[0]?.geometry) {
+              setHoveredDeleteFeature(e.features[0].geometry);
+              map.getCanvas().style.cursor = "pointer";
+            } else {
+              setHoveredDeleteFeature(null);
+              map.getCanvas().style.cursor = "not-allowed";
+            }
+            return;
           }
+          map.getCanvas().style.cursor = "pointer";
         });
 
         map.on("mouseleave", "available-zones-fill", () => {
           if (currentModeRef.current === "addArea") {
             map.getCanvas().style.cursor = "crosshair";
             map.getCanvasContainer().style.cursor = "crosshair";
+          } else if (currentModeRef.current === "deleteArea") {
+            setHoveredDeleteFeature(null);
+            map.getCanvas().style.cursor = "";
+            map.getCanvasContainer().style.cursor = "";
           } else {
             map.getCanvas().style.cursor = "";
             map.getCanvasContainer().style.cursor = "";
           }
+        });
+      }
+
+      // 2c. Delete Hover highlight layer
+      if (!map.getSource("delete-hover-src")) {
+        map.addSource("delete-hover-src", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [],
+          },
+        });
+
+        map.addLayer({
+          id: "delete-hover-fill",
+          type: "fill",
+          source: "delete-hover-src",
+          paint: {
+            "fill-color": "#EF4444",
+            "fill-opacity": 0.35,
+          },
+        });
+
+        map.addLayer({
+          id: "delete-hover-stroke",
+          type: "line",
+          source: "delete-hover-src",
+          paint: {
+            "line-color": "#B42318",
+            "line-width": 3.0,
+          },
         });
       }
     }
@@ -1079,46 +1235,45 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     const map = mapRef.current;
     if (!map) return;
 
-    if (map.isStyleLoaded()) {
-      if (map.getSource("location-zones-src")) {
-        const polygonFeatures = buildZoneFeatures();
+    const locZonesSrc = map.getSource("location-zones-src") as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (locZonesSrc) {
+      const polygonFeatures = buildZoneFeatures();
+      locZonesSrc.setData({
+        type: "FeatureCollection",
+        features: polygonFeatures,
+      });
+    }
 
-        (
-          map.getSource("location-zones-src") as maplibregl.GeoJSONSource
-        ).setData({
-          type: "FeatureCollection",
-          features: polygonFeatures,
-        });
-      }
+    const availZonesSrc = map.getSource("available-zones-src") as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (availZonesSrc) {
+      const isBuilderMode = Boolean(
+        onAddCustomLocation || onRequestOpenAddAreaModal,
+      );
+      const addedIds = new Set(locations.map((l) => l.id));
+      const availableLocations = isBuilderMode
+        ? (campus?.defaultLocations || []).filter((l) => !addedIds.has(l.id))
+        : [];
 
-      if (map.getSource("available-zones-src")) {
-        const isBuilderMode = Boolean(
-          onAddCustomLocation || onRequestOpenAddAreaModal,
-        );
-        const addedIds = new Set(locations.map((l) => l.id));
-        const availableLocations = isBuilderMode
-          ? (campus?.defaultLocations || []).filter((l) => !addedIds.has(l.id))
-          : [];
-
-        const availableFeatures: Feature[] = availableLocations
-          .filter((loc) => loc.geometry.type === "Polygon")
-          .map((loc) => ({
-            type: "Feature",
+      const availableFeatures: Feature[] = availableLocations
+        .filter((loc) => loc.geometry.type === "Polygon")
+        .map((loc) => ({
+          type: "Feature",
+          id: loc.id,
+          properties: {
             id: loc.id,
-            properties: {
-              id: loc.id,
-              name: loc.name,
-            },
-            geometry: loc.geometry as any,
-          }));
+            name: loc.name,
+          },
+          geometry: loc.geometry as any,
+        }));
 
-        (
-          map.getSource("available-zones-src") as maplibregl.GeoJSONSource
-        ).setData({
-          type: "FeatureCollection",
-          features: availableFeatures,
-        });
-      }
+      availZonesSrc.setData({
+        type: "FeatureCollection",
+        features: availableFeatures,
+      });
     }
 
     renderMarkers(map);
@@ -1384,17 +1539,22 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         </div>
       `;
 
-      // Single click: select location
+      // Single click: select location OR initiate delete in deleteArea mode
       el.addEventListener("click", (e) => {
         if (currentModeRef.current === "addArea") return;
+        if (currentModeRef.current === "deleteArea") {
+          e.stopPropagation();
+          handleInitiateDeleteArea(loc.id);
+          return;
+        }
         e.stopPropagation();
         onSelectLocationRef.current?.(loc.id);
       });
 
-      // Double click: edit location name directly on button (only when editing is enabled via onUpdateLocation)
+      // Double click: edit location name directly on button (only in select mode)
       if (onUpdateLocation) {
         el.addEventListener("dblclick", (e) => {
-          if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current !== "select") return;
           e.stopPropagation();
           e.preventDefault();
 
@@ -1497,6 +1657,11 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
         el.addEventListener("click", (e) => {
           if (currentModeRef.current === "addArea") return;
+          if (currentModeRef.current === "deleteArea") {
+            e.stopPropagation();
+            handleInitiateDeleteArea(loc.id);
+            return;
+          }
           e.stopPropagation();
           handleSelectOrAddLocation(loc);
         });
@@ -1526,30 +1691,79 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       const canvasContainer = map.getCanvasContainer();
       const canvas = map.getCanvas();
 
-      container.classList.add("maplibregl-crosshair", "mode-add-location");
-      canvasContainer.classList.add(
-        "maplibregl-crosshair",
-        "mode-add-location",
-      );
-      canvas.classList.add("mode-add-location");
-      canvas.style.cursor = "crosshair";
-      canvasContainer.style.cursor = "crosshair";
+      if (!isDraftClosed) {
+        container.classList.add("maplibregl-crosshair", "mode-add-location");
+        canvasContainer.classList.add(
+          "maplibregl-crosshair",
+          "mode-add-location",
+        );
+        canvas.classList.add("mode-add-location");
+        canvas.style.cursor = "crosshair";
+        canvasContainer.style.cursor = "crosshair";
+      } else {
+        container.classList.remove("maplibregl-crosshair");
+        canvasContainer.classList.remove("maplibregl-crosshair");
+        canvas.classList.remove("mode-add-location");
+        canvas.style.cursor = "default";
+        canvasContainer.style.cursor = "default";
+      }
 
       const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+        if (currentModeRef.current !== "addArea") return;
+        // Do not allow further drawing clicks to add vertices after closure
+        if (isDraftClosedRef.current) return;
+
+        const currentPoints = draftPointsRef.current;
         const point = [
           Number(e.lngLat.lng.toFixed(6)),
           Number(e.lngLat.lat.toFixed(6)),
         ];
+
+        // 1. If fewer than 3 distinct vertices have been added, add normally
+        if (currentPoints.length < 3) {
+          if (currentPoints.length > 0) {
+            const prev = currentPoints[currentPoints.length - 1];
+            if (prev[0] === point[0] && prev[1] === point[1]) {
+              return;
+            }
+          }
+          setDraftPoints((prev) => [...prev, point]);
+          return;
+        }
+
+        // 2. Once at least 3 distinct vertices exist, check screen-space tolerance to first vertex
+        const firstCoord = currentPoints[0];
+        const firstPointScreen = map.project(firstCoord as [number, number]);
+        const clickScreen = e.point;
+        const distPx = Math.hypot(
+          firstPointScreen.x - clickScreen.x,
+          firstPointScreen.y - clickScreen.y,
+        );
+
+        if (distPx <= SNAP_TOLERANCE_PX) {
+          // Snap exact first coordinate and mark draft closed
+          const closed = closePolygonRing(currentPoints);
+          setDraftPoints(closed);
+          setIsDraftClosed(true);
+          return;
+        }
+
+        // 3. Click is outside snap tolerance, add vertex normally
+        const prev = currentPoints[currentPoints.length - 1];
+        if (prev[0] === point[0] && prev[1] === point[1]) {
+          return;
+        }
         setDraftPoints((prev) => [...prev, point]);
       };
 
       const handleMouseMove = () => {
         if (!container.classList.contains("is-panning")) {
-          if (canvas.style.cursor !== "crosshair") {
-            canvas.style.cursor = "crosshair";
+          const targetCursor = isDraftClosedRef.current ? "default" : "crosshair";
+          if (canvas.style.cursor !== targetCursor) {
+            canvas.style.cursor = targetCursor;
           }
-          if (canvasContainer.style.cursor !== "crosshair") {
-            canvasContainer.style.cursor = "crosshair";
+          if (canvasContainer.style.cursor !== targetCursor) {
+            canvasContainer.style.cursor = targetCursor;
           }
         }
       };
@@ -1560,14 +1774,16 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
       const handleDragEnd = () => {
         container.classList.remove("is-panning");
-        canvas.style.cursor = "crosshair";
-        canvasContainer.style.cursor = "crosshair";
+        const targetCursor = isDraftClosedRef.current ? "default" : "crosshair";
+        canvas.style.cursor = targetCursor;
+        canvasContainer.style.cursor = targetCursor;
       };
 
       const handleMouseUp = () => {
         container.classList.remove("is-panning");
-        canvas.style.cursor = "crosshair";
-        canvasContainer.style.cursor = "crosshair";
+        const targetCursor = isDraftClosedRef.current ? "default" : "crosshair";
+        canvas.style.cursor = targetCursor;
+        canvasContainer.style.cursor = targetCursor;
       };
 
       map.on("click", handleMapClick);
@@ -1601,10 +1817,11 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     } else {
       setIsDrawing(false);
       setDraftPoints([]);
+      setIsDraftClosed(false);
       draftMarkerRefs.current.forEach((m) => m.remove());
       draftMarkerRefs.current = [];
     }
-  }, [currentMode]);
+  }, [currentMode, isDraftClosed]);
 
   // Update drawing layer preview
   useEffect(() => {
@@ -1615,96 +1832,230 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     draftMarkerRefs.current.forEach((m) => m.remove());
     draftMarkerRefs.current = [];
 
-    // Add small dot markers for draft vertices
-    draftPoints.forEach((pt) => {
-      const el = document.createElement("div");
-      el.className =
-        "w-3 h-3 rounded bg-emerald-600 border-2 border-white shadow-md cursor-pointer animate-pulse draft-vertex";
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat(pt as [number, number])
-        .addTo(map);
-      draftMarkerRefs.current.push(marker);
-    });
+    // Add markers for vertices
+    if (draftPoints.length > 0) {
+      const firstCoord = draftPoints[0];
+      const startMarkerEl = document.createElement("div");
+      startMarkerEl.className =
+        "group relative flex items-center justify-center select-none";
 
-    // Update draft polygon GeoJSON
-    if (draftPoints.length >= 2) {
-      const draftGeoJson: FeatureCollection = {
+      if (isDraftClosed) {
+        // Closed state indicator: solid forest green with lime ring and check icon
+        startMarkerEl.innerHTML = `
+          <div class="relative flex items-center justify-center">
+            <span class="w-5 h-5 rounded-full bg-[#004B20] border-2 border-white shadow-lg flex items-center justify-center ring-2 ring-[#70D000]">
+              <svg class="w-3 h-3 text-[#70D000]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </span>
+            <span class="absolute -bottom-5 whitespace-nowrap bg-[#004B20] text-[#70D000] text-[9px] font-bold px-1.5 py-0.5 rounded shadow pointer-events-none">
+              Closed
+            </span>
+          </div>
+        `;
+      } else {
+        // Open state indicator: distinct green/lime treatment with pulsing ring
+        const canClose = draftPoints.length >= 3;
+        startMarkerEl.className += canClose ? " cursor-pointer" : "";
+        startMarkerEl.innerHTML = `
+          <div class="relative flex items-center justify-center">
+            <span class="absolute -inset-1 rounded-full bg-[#70D000]/50 animate-ping"></span>
+            <span class="relative w-4.5 h-4.5 rounded-full bg-[#70D000] border-2 border-white shadow-md flex items-center justify-center ring-2 ring-[#004B20]">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#004B20]"></span>
+            </span>
+            <span class="absolute -bottom-5 whitespace-nowrap bg-[#004B20] text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow pointer-events-none">
+              ${canClose ? "Click to close" : "Start"}
+            </span>
+          </div>
+        `;
+
+        if (canClose) {
+          startMarkerEl.title = "Click to close polygon";
+          startMarkerEl.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (
+              draftPointsRef.current.length >= 3 &&
+              !isDraftClosedRef.current
+            ) {
+              const closed = closePolygonRing(draftPointsRef.current);
+              setDraftPoints(closed);
+              setIsDraftClosed(true);
+            }
+          });
+        }
+      }
+
+      const startMarker = new maplibregl.Marker({ element: startMarkerEl })
+        .setLngLat(firstCoord as [number, number])
+        .addTo(map);
+      draftMarkerRefs.current.push(startMarker);
+
+      // Intermediate vertices (excluding first, and if closed, excluding duplicated last)
+      const intermediateCount = isDraftClosed
+        ? draftPoints.length - 1
+        : draftPoints.length;
+      for (let i = 1; i < intermediateCount; i++) {
+        const pt = draftPoints[i];
+        const el = document.createElement("div");
+        el.className =
+          "w-3 h-3 rounded-full bg-emerald-600 border-2 border-white shadow-md cursor-default pointer-events-none";
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat(pt as [number, number])
+          .addTo(map);
+        draftMarkerRefs.current.push(marker);
+      }
+    }
+
+    // Ensure Draft Preview Source and Layers exist
+    if (!map.getSource("draft-polygon-src")) {
+      map.addSource("draft-polygon-src", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [],
+        },
+      });
+    }
+
+    // Fill layer (added first so stroke renders above it)
+    if (!map.getLayer("draft-polygon-fill")) {
+      map.addLayer({
+        id: "draft-polygon-fill",
+        type: "fill",
+        source: "draft-polygon-src",
+        layout: {
+          visibility: "none",
+        },
+        paint: {
+          "fill-color": "#70D000",
+          "fill-opacity": 0.28,
+        },
+      });
+    }
+
+    // Stroke layer (added after fill)
+    if (!map.getLayer("draft-polygon-stroke")) {
+      map.addLayer({
+        id: "draft-polygon-stroke",
+        type: "line",
+        source: "draft-polygon-src",
+        layout: {
+          visibility: "none",
+          "line-join": "round",
+          "line-cap": "round",
+        },
+        paint: {
+          "line-color": "#059669",
+          "line-width": 2.5,
+          "line-dasharray": [2, 2],
+        },
+      });
+    }
+
+    const src = map.getSource("draft-polygon-src") as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    if (!src) return;
+
+    if (isDraftClosed && draftPoints.length >= 4) {
+      // Closed Polygon preview: Polygon geometry, visible fill, solid forest green stroke
+      src.setData({
         type: "FeatureCollection",
         features: [
           {
             type: "Feature",
-            properties: {},
+            properties: { isClosed: true },
+            geometry: {
+              type: "Polygon",
+              coordinates: [draftPoints],
+            },
+          },
+        ],
+      });
+
+      map.setLayoutProperty("draft-polygon-fill", "visibility", "visible");
+      map.setLayoutProperty("draft-polygon-stroke", "visibility", "visible");
+      map.setPaintProperty("draft-polygon-stroke", "line-color", "#004B20");
+      map.setPaintProperty("draft-polygon-stroke", "line-width", 3.5);
+      map.setPaintProperty("draft-polygon-stroke", "line-dasharray", [1, 0]);
+    } else if (!isDraftClosed && draftPoints.length >= 2) {
+      // Open LineString preview: LineString geometry, hidden fill, dashed stroke
+      src.setData({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { isClosed: false },
             geometry: {
               type: "LineString",
               coordinates: draftPoints,
             },
           },
         ],
-      };
+      });
 
-      if (map.getSource("draft-polygon-src")) {
-        (
-          map.getSource("draft-polygon-src") as maplibregl.GeoJSONSource
-        ).setData(draftGeoJson);
-      } else {
-        map.addSource("draft-polygon-src", {
-          type: "geojson",
-          data: draftGeoJson,
-        });
-
-        map.addLayer({
-          id: "draft-polygon-line",
-          type: "line",
-          source: "draft-polygon-src",
-          paint: {
-            "line-color": "#059669",
-            "line-width": 2.5,
-            "line-dasharray": [2, 2],
-          },
-        });
-      }
-    } else if (map.getLayer("draft-polygon-line")) {
-      map.removeLayer("draft-polygon-line");
-      map.removeSource("draft-polygon-src");
+      map.setLayoutProperty("draft-polygon-fill", "visibility", "none");
+      map.setLayoutProperty("draft-polygon-stroke", "visibility", "visible");
+      map.setPaintProperty("draft-polygon-stroke", "line-color", "#059669");
+      map.setPaintProperty("draft-polygon-stroke", "line-width", 2.5);
+      map.setPaintProperty("draft-polygon-stroke", "line-dasharray", [2, 2]);
+    } else {
+      // Cleared / less than 2 points
+      src.setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+      map.setLayoutProperty("draft-polygon-fill", "visibility", "none");
+      map.setLayoutProperty("draft-polygon-stroke", "visibility", "none");
     }
-  }, [draftPoints]);
+  }, [draftPoints, isDraftClosed]);
 
   const handleFinishDrawing = () => {
-    if (draftPoints.length < 3) {
-      alert(
-        "Please click at least 3 points on the map to define a valid location polygon.",
-      );
-      return;
+    let closedCoords: number[][];
+    if (isDraftClosed) {
+      closedCoords = draftPoints;
+    } else {
+      if (draftPoints.length < 3) {
+        alert(
+          "Please click at least 3 points on the map to define a valid location polygon.",
+        );
+        return;
+      }
+      closedCoords = closePolygonRing(draftPoints);
     }
 
-    // Close polygon
-    const closedCoords = [...draftPoints, draftPoints[0]];
-    const calculatedArea = calculatePolygonAreaM2(closedCoords);
-    if (!calculatedArea || calculatedArea <= 0) {
+    const validation = validatePolygonRing(closedCoords);
+    if (!validation.isValid) {
       alert(
-        "The drawn polygon does not enclose a valid positive area. Please redraw the location.",
+        validation.error ||
+          "The drawn polygon is invalid. Please redraw the location.",
       );
       return;
     }
-    const center = getPolygonCenter(closedCoords);
 
     setPendingNewArea({
       coordinates: closedCoords,
-      area: calculatedArea,
-      center,
+      area: validation.area!,
+      center: validation.center!,
     });
     setNewAreaName("");
     setNewAreaActivities([]);
   };
 
+
+  const handleCancelDrawing = () => {
+    setDraftPoints([]);
+    setIsDraftClosed(false);
+    setCurrentMode("select");
+  };
+
   const handleConfirmNewArea = () => {
-    if (
-      !pendingNewArea ||
-      pendingNewArea.coordinates.length < 4 ||
-      pendingNewArea.area <= 0
-    ) {
+    if (!pendingNewArea) return;
+    const validation = validatePolygonRing(pendingNewArea.coordinates);
+    if (!validation.isValid) {
       alert(
-        "A valid polygon with positive area is required to add an event location.",
+        validation.error ||
+          "A valid polygon with positive area is required to add an event location.",
       );
       return;
     }
@@ -1718,6 +2069,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       description: "Event area on campus map",
       relativeIntensity: "Medium",
       tags: ["Custom Area"],
+      source: "user_drawn",
       center: pendingNewArea.center,
       geometry: {
         type: "Polygon",
@@ -1728,18 +2080,100 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     onAddCustomLocation?.(newLocation);
     setPendingNewArea(null);
     setDraftPoints([]);
+    setIsDraftClosed(false);
     setCurrentMode("select");
   };
 
   const handleCancelNewArea = () => {
     setPendingNewArea(null);
     setDraftPoints([]);
+    setIsDraftClosed(false);
     setCurrentMode("select");
   };
 
-  const handleCancelDrawing = () => {
-    setDraftPoints([]);
+  const handleConfirmDeleteArea = () => {
+    if (!pendingDeleteArea) return;
+    const areaId = pendingDeleteArea.id;
+
+    // Immediately remove area geometry and markers from MapLibre synchronously
+    const map = mapRef.current;
+    if (map) {
+      // Clear delete hover highlight immediately
+      const hoverSrc = map.getSource("delete-hover-src") as
+        | maplibregl.GeoJSONSource
+        | undefined;
+      if (hoverSrc) {
+        hoverSrc.setData({ type: "FeatureCollection", features: [] });
+      }
+
+      // Remove from location-zones-src immediately
+      const locZonesSrc = map.getSource("location-zones-src") as
+        | maplibregl.GeoJSONSource
+        | undefined;
+      if (locZonesSrc) {
+        const remainingZoneFeatures = buildZoneFeatures().filter(
+          (f) => f.properties?.id !== areaId && f.id !== areaId,
+        );
+        locZonesSrc.setData({
+          type: "FeatureCollection",
+          features: remainingZoneFeatures,
+        });
+      }
+
+      // Remove from available-zones-src immediately
+      const availZonesSrc = map.getSource("available-zones-src") as
+        | maplibregl.GeoJSONSource
+        | undefined;
+      if (availZonesSrc) {
+        const isBuilderMode = Boolean(
+          onAddCustomLocation || onRequestOpenAddAreaModal,
+        );
+        const addedIds = new Set(
+          locations.filter((l) => l.id !== areaId).map((l) => l.id),
+        );
+        const availableLocations = isBuilderMode
+          ? (campus?.defaultLocations || []).filter(
+              (l) => l.id !== areaId && !addedIds.has(l.id),
+            )
+          : [];
+
+        const availableFeatures: Feature[] = availableLocations
+          .filter((loc) => loc.geometry.type === "Polygon")
+          .map((loc) => ({
+            type: "Feature",
+            id: loc.id,
+            properties: {
+              id: loc.id,
+              name: loc.name,
+            },
+            geometry: loc.geometry as any,
+          }));
+
+        availZonesSrc.setData({
+          type: "FeatureCollection",
+          features: availableFeatures,
+        });
+      }
+
+      // Remove any HTML marker for this area immediately
+      markersRef.current = markersRef.current.filter((m) => {
+        const el = m.getElement();
+        if (el.getAttribute("data-loc-id") === areaId) {
+          m.remove();
+          return false;
+        }
+        return true;
+      });
+    }
+
+    onDeleteAreaRef.current?.(areaId);
+    setHoveredDeleteFeature(null);
+    setPendingDeleteArea(null);
     setCurrentMode("select");
+  };
+
+  const handleCancelDeleteArea = () => {
+    setPendingDeleteArea(null);
   };
 
   return (
@@ -1764,45 +2198,98 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         </div>
       )}
 
-      {/* Route Popularity Legend */}
-      {showRoutes &&
-        routeResult &&
-        (routeResult.paths_geojson?.features?.length > 0 ||
-          routeResult.connectors_geojson?.features?.length > 0) && (
-          <div className="absolute top-14 left-3 z-10">
-            <RouteLegend routeResult={routeResult} isStale={isRoutesStale} />
-          </div>
-        )}
+
 
       {/* Drawing Active Banner */}
       {currentMode === "addArea" && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2 rounded shadow-lg border border-emerald-600/30 text-xs">
-          <span className="font-semibold text-emerald-800">
-            Click map to add boundary points ({draftPoints.length} added)
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={draftPoints.length < 3}
-              onClick={handleFinishDrawing}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
-                draftPoints.length >= 3
-                  ? "bg-[#155734] text-white hover:bg-[#114328]"
-                  : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
-              }`}
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Finish ({draftPoints.length}/3+)</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelDrawing}
-              className="p-1 rounded text-neutral-500 hover:bg-neutral-100 cursor-pointer"
-              title="Cancel drawing"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-lg shadow-lg border border-[#004B20]/40 text-xs font-sans">
+          {isDraftClosed ? (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#004B20] ring-2 ring-[#70D000]" />
+                <span className="font-bold text-[#004B20]">
+                  Polygon Complete
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 border-l border-[#E1E8DE] pl-2.5">
+                <button
+                  type="button"
+                  onClick={handleFinishDrawing}
+                  className="flex items-center gap-1 px-3 py-1 bg-[#004B20] hover:bg-[#003B19] text-white font-bold rounded shadow-xs cursor-pointer transition"
+                  title="Confirm and configure location details"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Finish</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="font-semibold text-emerald-800">
+                {draftPoints.length >= 3
+                  ? `Click starting point to close polygon (${draftPoints.length} vertices added)`
+                  : draftPoints.length > 0
+                    ? `Click map to add boundary points (${draftPoints.length} added)`
+                    : "Click map to place the first boundary point"}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={draftPoints.length < 3}
+                  onClick={handleFinishDrawing}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
+                    draftPoints.length >= 3
+                      ? "bg-[#155734] text-white hover:bg-[#114328]"
+                      : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Finish ({draftPoints.length}/3+)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelDrawing}
+                  className="p-1 rounded text-neutral-500 hover:bg-neutral-100 cursor-pointer"
+                  title="Cancel drawing"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Delete Area Mode Active Banner */}
+      {currentMode === "deleteArea" && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2 rounded-lg shadow-lg border border-red-500/30 text-xs font-sans">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-3.5 h-3.5 text-red-600" />
+            <span className="font-bold text-red-800">
+              Delete Area Tool — Click any user-created area on the map to delete it
+            </span>
           </div>
+          <button
+            type="button"
+            onClick={() => setCurrentMode("select")}
+            className="px-2.5 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer transition border border-neutral-300"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Preset Zone Delete Warning Toast */}
+      {presetDeleteWarning && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2 rounded-lg shadow-md text-xs font-sans">
+          <span>{presetDeleteWarning}</span>
+          <button
+            type="button"
+            onClick={() => setPresetDeleteWarning(null)}
+            className="p-0.5 text-amber-700 hover:text-amber-900 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
 
@@ -1950,6 +2437,55 @@ export const CampusMap: React.FC<CampusMapProps> = ({
               >
                 <span>Add Location to Event</span>
                 <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Area Confirmation Modal */}
+      {pendingDeleteArea && (
+        <div className="absolute inset-0 z-50 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-5 shadow-2xl border border-red-200 w-full max-w-md space-y-4 animate-in fade-in zoom-in-95 duration-150 font-sans">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-red-100 text-red-600 shrink-0 mt-0.5">
+                <Trash2 className="w-5 h-5 stroke-[2]" />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <h3 className="font-heading text-sm font-bold text-[#202820]">
+                  Permanently Delete Map Area?
+                </h3>
+                {pendingDeleteArea.isConfiguredLocation ? (
+                  <p className="text-xs text-[#667267] leading-relaxed">
+                    Map area <strong className="text-[#202820]">"{pendingDeleteArea.name}"</strong> is currently configured as an active event location. Deleting this area will permanently remove both the area from the map and its location from your event configuration.
+                  </p>
+                ) : (
+                  <p className="text-xs text-[#667267] leading-relaxed">
+                    Are you sure you want to permanently delete map area <strong className="text-[#202820]">"{pendingDeleteArea.name}"</strong>? This will remove the drawn area from the map. This action cannot be undone.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E1E8DE]">
+              <button
+                type="button"
+                onClick={handleCancelDeleteArea}
+                className="px-3.5 py-1.5 text-xs font-semibold text-[#667267] hover:text-[#202820] rounded hover:bg-[#F7F9F5] cursor-pointer transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteArea}
+                className="px-4 py-1.5 bg-[#B42318] hover:bg-[#911c13] text-white font-bold text-xs rounded shadow-xs cursor-pointer transition flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>
+                  {pendingDeleteArea.isConfiguredLocation
+                    ? "Delete Area & Location"
+                    : "Delete Area"}
+                </span>
               </button>
             </div>
           </div>

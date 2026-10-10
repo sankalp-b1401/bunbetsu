@@ -76,3 +76,97 @@ export function formatArea(m2: number): string {
   if (!m2 || m2 <= 0) return '0 m²';
   return `${Math.round(m2).toLocaleString()} m²`;
 }
+
+export interface PolygonValidationResult {
+  isValid: boolean;
+  error?: string;
+  area?: number;
+  center?: [number, number];
+}
+
+/**
+ * Closes a coordinate ring by copying the exact first coordinate to the end.
+ * If the ring is already closed or has fewer than 3 points, returns the points appropriately.
+ */
+export function closePolygonRing(points: number[][]): number[][] {
+  if (!points || points.length < 3) return points ? points.map((p) => [...p]) : [];
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) {
+    return points.map((p) => [...p]);
+  }
+  return [...points.map((p) => [...p]), [first[0], first[1]]];
+}
+
+/**
+ * Checks whether a ring is explicitly closed (at least 4 points and first coordinate equals last coordinate).
+ */
+export function isRingClosed(points: number[][]): boolean {
+  if (!points || points.length < 4) return false;
+  const first = points[0];
+  const last = points[points.length - 1];
+  return first[0] === last[0] && first[1] === last[1];
+}
+
+/**
+ * Validates a polygon coordinate ring according to Bunbetsu rules:
+ * - Requires at least 3 distinct vertices.
+ * - Requires at least 4 positions in the closed ring.
+ * - Ensures first and last coordinates match exactly.
+ * - Disallows consecutive duplicate vertices.
+ * - Requires area > 0 using calculatePolygonAreaM2.
+ */
+export function validatePolygonRing(points: number[][]): PolygonValidationResult {
+  if (!points || points.length < 4) {
+    return {
+      isValid: false,
+      error: 'A closed polygon requires at least 4 coordinate positions (at least 3 distinct vertices plus closing vertex).',
+    };
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    return {
+      isValid: false,
+      error: 'The polygon is not closed: first and last coordinates must be identical.',
+    };
+  }
+
+  const distinctVertices = points.slice(0, points.length - 1);
+  if (distinctVertices.length < 3) {
+    return {
+      isValid: false,
+      error: 'The polygon must have at least 3 distinct vertices.',
+    };
+  }
+
+  // Check for consecutive duplicate vertices
+  for (let i = 0; i < distinctVertices.length; i++) {
+    const nextIdx = (i + 1) % distinctVertices.length;
+    const curr = distinctVertices[i];
+    const next = distinctVertices[nextIdx];
+    if (curr[0] === next[0] && curr[1] === next[1]) {
+      return {
+        isValid: false,
+        error: 'The polygon contains duplicate consecutive vertices.',
+      };
+    }
+  }
+
+  const area = calculatePolygonAreaM2(points);
+  if (!area || area <= 0) {
+    return {
+      isValid: false,
+      error: 'The polygon does not enclose a valid positive area.',
+    };
+  }
+
+  const center = getPolygonCenter(points);
+
+  return {
+    isValid: true,
+    area,
+    center,
+  };
+}

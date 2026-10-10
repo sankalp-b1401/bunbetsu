@@ -7,6 +7,7 @@ interface BaselineSensitivityChartProps {
   currentTotalWasteKg: number;
   sensitivitySeries?: BaselineSensitivityPoint[];
   loading?: boolean;
+  embedded?: boolean;
 }
 
 export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> = ({
@@ -14,8 +15,17 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
   currentTotalWasteKg = 0,
   sensitivitySeries,
   loading = false,
+  embedded = false,
 }) => {
   if (loading) {
+    if (embedded) {
+      return (
+        <div className="space-y-2 animate-pulse my-auto py-2">
+          <div className="h-24 bg-neutral-100 rounded-lg" />
+          <div className="h-6 bg-neutral-100 rounded" />
+        </div>
+      );
+    }
     return (
       <div className="bg-white rounded-xl border border-[#E1E8DE] p-4.5 shadow-2xs space-y-3 animate-pulse font-sans">
         <div className="h-4 bg-neutral-200 rounded w-1/3" />
@@ -74,26 +84,8 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
       .join(' ');
   }
 
-  return (
-    <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-1 border-b border-[#E1E8DE]">
-        <div className="flex items-center gap-1.5">
-          <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
-            Effect of baseline rate
-          </h3>
-          <span
-            className="text-[#667267] hover:text-[#202820] cursor-help"
-            title="Sensitivity of total predicted waste relative to baseline per-person generation rate."
-          >
-            <Info className="w-3.5 h-3.5" />
-          </span>
-        </div>
-        <span className="text-[10px] text-[#667267] font-semibold">
-          {hasSeries ? 'Sensitivity series' : 'Single benchmark'}
-        </span>
-      </div>
-
+  const chartBody = (
+    <>
       {/* SVG Line Chart */}
       <div className="w-full flex justify-center my-auto">
         <svg
@@ -236,18 +228,34 @@ export const BaselineSensitivityChart: React.FC<BaselineSensitivityChartProps> =
           </g>
         </svg>
       </div>
+    </>
+  );
 
-      {/* Honest Empty / Standby Note when full sensitivity series is unpopulated */}
-      {!hasSeries && (
-        <div className="p-1.5 bg-[#F7F9F5] border border-[#E1E8DE] rounded-lg text-[9.5px] text-[#667267] flex items-start gap-1 leading-snug">
-          <Info className="w-3 h-3 text-[#004B20] shrink-0 mt-0.5" />
-          <span>
-            {currentBaselineRate > 0
-              ? `Benchmark: ${currentBaselineRate} kg/person/day. Multi-rate sensitivity series pending service.`
-              : 'CPCB state baseline benchmark. Multi-rate sensitivity series pending service.'}
+  if (embedded) {
+    return (
+      <div className="flex flex-col justify-center flex-1 min-h-0 py-0.5 my-auto">
+        {chartBody}
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between pb-1 border-b border-[#E1E8DE]">
+        <div className="flex items-center gap-1.5">
+          <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
+            Effect of baseline rate
+          </h3>
+          <span
+            className="text-[#667267] hover:text-[#202820] cursor-help"
+            title="Sensitivity of total predicted waste relative to baseline per-person generation rate."
+          >
+            <Info className="w-3.5 h-3.5" />
           </span>
         </div>
-      )}
+      </div>
+      {chartBody}
     </div>
   );
 };

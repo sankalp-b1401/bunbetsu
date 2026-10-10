@@ -11,9 +11,22 @@ export type ActivityType =
   | 'Literary & Fine Arts'
   | 'Hackathon';
 
+export type MapMode = 'select' | 'addArea' | 'deleteArea';
+
 export interface LocationGeometry {
   type: 'Polygon' | 'MultiPolygon' | 'Point';
   coordinates: any;
+}
+
+export interface UserMapArea {
+  id: string;
+  name: string;
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+  area: number;
+  source: 'user_drawn';
 }
 
 export interface CampusLocation {
@@ -26,6 +39,7 @@ export interface CampusLocation {
   tags: string[];
   geometry: LocationGeometry;
   center?: [number, number]; // [lng, lat]
+  source?: 'preset' | 'user_drawn';
 }
 
 export interface Campus {
@@ -352,6 +366,7 @@ export interface LocationBinRecommendationItem {
 }
 
 export interface BinRecommendationResult {
+  status?: 'success' | 'partial' | 'failed';
   totalBins: number;
   capacityBins?: RangeModel;
   recommendedBins?: RangeModel;
@@ -416,6 +431,7 @@ export interface BackendCampusPlanResponse {
   success: boolean;
   prediction: BackendPredictionResponse | null;
   bin_recommendations: {
+    status?: 'success' | 'partial' | 'failed';
     total_bins: number;
     capacity_bins: RangeModel;
     recommended_bins: RangeModel;

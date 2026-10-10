@@ -123,9 +123,45 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             </button>
           </div>
 
+          {/* 3. Recommended Bins */}
+          <div className="flex items-center justify-between py-1">
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-[#004B20]" />
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold text-[#202820]">Recommended bins</span>
+                {!binsAvailable && (
+                  <span className="text-[10px] text-[#667267] font-medium leading-none">
+                    Distribution pending
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showBins}
+              disabled={!binsAvailable}
+              onClick={() => onToggleBins(!showBins)}
+              className={`w-9 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
+                !binsAvailable
+                  ? 'bg-[#E1E8DE]/60 opacity-60 cursor-not-allowed'
+                  : showBins
+                  ? 'bg-[#004B20] cursor-pointer'
+                  : 'bg-[#E1E8DE] cursor-pointer'
+              }`}
+              title={!binsAvailable ? 'Bin placement coordinates pending model service' : 'Toggle bin locations'}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform transform ${
+                  showBins && binsAvailable ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
           <div className="h-px bg-[#E1E8DE]/80 my-1" />
 
-          {/* 3. Total Waste Heatmap */}
+          {/* 4. Total Waste Heatmap */}
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2">
               <span
@@ -154,7 +190,7 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             </button>
           </div>
 
-          {/* 4. Category-specific Heatmap */}
+          {/* 5. Category-specific Heatmap */}
           <div className="space-y-1.5 py-0.5">
             <div className="flex items-center justify-between py-0.5">
               <div className="flex items-center gap-2">
@@ -213,7 +249,7 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             )}
           </div>
 
-          {/* 5. Recyclable Waste Heatmap */}
+          {/* 6. Recyclable Waste Heatmap */}
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2">
               <Recycle className="w-4 h-4 text-emerald-600" />
@@ -236,7 +272,7 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             </button>
           </div>
 
-          {/* 6. Disposable Waste Heatmap */}
+          {/* 7. Disposable Waste Heatmap */}
           <div className="flex items-center justify-between py-1">
             <div className="flex items-center gap-2">
               <Trash2 className="w-4 h-4 text-blue-600" />
@@ -259,43 +295,6 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             </button>
           </div>
 
-          <div className="h-px bg-[#E1E8DE]/80 my-1" />
-
-          {/* 7. Recommended Bins */}
-          <div className="flex items-center justify-between py-1">
-            <div className="flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-[#004B20]" />
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold text-[#202820]">Recommended bins</span>
-                {!binsAvailable && (
-                  <span className="text-[10px] text-[#667267] font-medium leading-none">
-                    Distribution pending
-                  </span>
-                )}
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={showBins}
-              disabled={!binsAvailable}
-              onClick={() => onToggleBins(!showBins)}
-              className={`w-9 h-5 rounded-full transition-colors relative flex items-center p-0.5 ${
-                !binsAvailable
-                  ? 'bg-[#E1E8DE]/60 opacity-60 cursor-not-allowed'
-                  : showBins
-                  ? 'bg-[#004B20] cursor-pointer'
-                  : 'bg-[#E1E8DE] cursor-pointer'
-              }`}
-              title={!binsAvailable ? 'Bin placement coordinates pending model service' : 'Toggle bin locations'}
-            >
-              <div
-                className={`w-4 h-4 rounded-full bg-white shadow-xs transition-transform transform ${
-                  showBins && binsAvailable ? 'translate-x-4' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
 
           {/* 8. High-traffic Routes (commented out per wireframe) */}
           {/*

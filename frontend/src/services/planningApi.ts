@@ -294,7 +294,7 @@ export async function requestCampusPlan(
   if (data.bin_recommendations) {
     const rawBins = data.bin_recommendations;
 
-    const markers: RecommendedBinItem[] = rawBins.bins.map((b) => ({
+    const markers: RecommendedBinItem[] = (rawBins.bins || []).map((b) => ({
       id: b.id,
       locationId: b.location_id,
       locationName: b.location_name,
@@ -306,7 +306,7 @@ export async function requestCampusPlan(
       capacityLitres: rawBins.bin_capacity_litres,
     }));
 
-    const locItems = rawBins.locations.map((loc) => ({
+    const locItems = (rawBins.locations || []).map((loc) => ({
       id: loc.id,
       location_name: loc.location_name,
       area: loc.area,
@@ -321,7 +321,7 @@ export async function requestCampusPlan(
       boundary_inset_m: loc.boundary_inset_m,
       placement_warnings: loc.placement_warnings,
       placement_status: loc.placement_status,
-      bin_placements: loc.bin_placements.map((p) => ({
+      bin_placements: (loc.bin_placements || []).map((p) => ({
         id: p.id,
         locationId: p.location_id,
         locationName: p.location_name,
@@ -343,7 +343,11 @@ export async function requestCampusPlan(
       };
     }
 
+    const binStatus: 'success' | 'partial' | 'failed' =
+      rawBins.status || (rawBins.total_bins > 0 ? 'success' : 'failed');
+
     binRecommendations = {
+      status: binStatus,
       totalBins: rawBins.total_bins,
       capacityBins: rawBins.capacity_bins,
       recommendedBins: rawBins.recommended_bins,
@@ -357,8 +361,8 @@ export async function requestCampusPlan(
       effectiveCapacityLitresPerBinPerDay: rawBins.effective_capacity_litres_per_bin_per_day,
       boundarySpacingTargetM: rawBins.boundary_spacing_target_m,
       boundaryInsetM: rawBins.boundary_inset_m,
-      assumptions: rawBins.assumptions,
-      warnings: rawBins.warnings,
+      assumptions: rawBins.assumptions || [],
+      warnings: rawBins.warnings || [],
     };
   }
 

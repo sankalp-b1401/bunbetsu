@@ -8,11 +8,14 @@ import {
   ChevronLeft,
   ChevronRight,
   PieChart as PieChartIcon,
+  LineChart,
 } from 'lucide-react';
-import { PredictionResult } from '../../types/bunbetsu';
+import { PredictionResult, BaselineSensitivityPoint } from '../../types/bunbetsu';
+import { BaselineSensitivityChart } from './BaselineSensitivityChart';
 
 interface WasteOverviewCardsProps {
   prediction: PredictionResult | null;
+  sensitivitySeries?: BaselineSensitivityPoint[];
   loading?: boolean;
 }
 
@@ -33,9 +36,10 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
   prediction,
+  sensitivitySeries,
   loading = false,
 }) => {
-  const [activeCard, setActiveCard] = useState<0 | 1>(0);
+  const [activeCard, setActiveCard] = useState<0 | 1 | 2>(0);
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   if (loading) {
@@ -63,7 +67,13 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
     );
   }
 
-  const { total_waste_kg, recyclable_kg, disposable_kg, composition_percent, composition_kg } = prediction;
+  const {
+    total_waste_kg,
+    recyclable_kg,
+    disposable_kg,
+    composition_percent = {},
+    composition_kg = {},
+  } = prediction;
 
   const totalLowKg = Math.round(total_waste_kg.low);
   const totalHighKg = Math.round(total_waste_kg.high);
@@ -88,28 +98,31 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
     };
   });
 
-  // Calculate SVG Donut Geometry
-  const size = 114;
-  const strokeWidth = 18;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const center = size / 2;
-
   let accumulatedPercent = 0;
   const activeHoveredSlice = hoveredCategory ? slices.find((s) => s.name === hoveredCategory) : null;
+
+  const cardTitles = [
+    'Key waste estimate',
+    'Waste composition',
+    'Effect of baseline',
+  ];
 
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
       {/* Top Header with Card Navigation */}
       <div className="flex items-center justify-between pb-1.5 border-b border-[#E1E8DE]">
         <div className="flex items-center gap-1.5 min-w-0">
-          {activeCard === 0 ? (
+          {activeCard === 0 && (
             <Sparkles className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
-          ) : (
+          )}
+          {activeCard === 1 && (
             <PieChartIcon className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
           )}
+          {activeCard === 2 && (
+            <LineChart className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
+          )}
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider truncate">
-            {activeCard === 0 ? 'Key waste estimate' : 'Waste composition'}
+            {cardTitles[activeCard]}
           </h3>
         </div>
 
@@ -135,28 +148,44 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
               title="Waste composition"
               aria-label="View waste composition"
             />
+            <button
+              type="button"
+              onClick={() => setActiveCard(2)}
+              className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                activeCard === 2 ? 'bg-[#004B20] w-3.5' : 'bg-[#E1E8DE] hover:bg-[#667267] w-1.5'
+              }`}
+              title="Effect of baseline"
+              aria-label="View effect of baseline"
+            />
           </div>
 
-          {/* Arrow Switcher */}
-          <button
-            type="button"
-            onClick={() => setActiveCard((prev) => (prev === 0 ? 1 : 0))}
-            className="p-1 rounded-md text-[#667267] hover:text-[#004B20] hover:bg-[#EAF5E6]/60 border border-[#E1E8DE] transition cursor-pointer flex items-center justify-center"
-            title={activeCard === 0 ? 'Next: Waste composition' : 'Previous: Key waste estimate'}
-            aria-label="Toggle next card"
-          >
-            {activeCard === 0 ? (
-              <ChevronRight className="w-3 h-3 text-[#202820]" />
-            ) : (
+          {/* Arrow Switcher Buttons */}
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveCard((prev) => (prev === 0 ? 2 : ((prev - 1) as 0 | 1 | 2)))}
+              className="p-1 rounded-md text-[#667267] hover:text-[#004B20] hover:bg-[#EAF5E6]/60 border border-[#E1E8DE] transition cursor-pointer flex items-center justify-center"
+              title="Previous card"
+              aria-label="Previous card"
+            >
               <ChevronLeft className="w-3 h-3 text-[#202820]" />
-            )}
-          </button>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCard((prev) => ((prev + 1) % 3 as 0 | 1 | 2))}
+              className="p-1 rounded-md text-[#667267] hover:text-[#004B20] hover:bg-[#EAF5E6]/60 border border-[#E1E8DE] transition cursor-pointer flex items-center justify-center"
+              title="Next card"
+              aria-label="Next card"
+            >
+              <ChevronRight className="w-3 h-3 text-[#202820]" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* CARD 0: KEY WASTE ESTIMATE (Range Highlighted, Centralized Total Removed) */}
+      {/* VIEW 0: KEY WASTE ESTIMATE */}
       {activeCard === 0 && (
-        <div className="flex flex-col gap-2 flex-1 min-h-0 justify-center pt-1">
+        <div className="flex flex-col gap-2 flex-1 min-h-0 justify-center pt-1 animate-in fade-in duration-150">
           {/* Highlight Range as Hero Metric */}
           <div className="p-2 sm:p-2.5 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE] flex items-center justify-between gap-2 shadow-2xs">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -182,9 +211,9 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
             </div>
           </div>
 
-          {/* Recyclable & Disposable Split Cards (Uniform Green & Blue theme) */}
+          {/* Recyclable & Disposable Split Cards */}
           <div className="grid grid-cols-2 gap-2">
-            {/* Recyclable Waste (Uniform Green + Recycle icon) */}
+            {/* Recyclable Waste */}
             <div className="p-1.5 sm:p-2 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-0.5">
               <div className="flex items-center gap-1 text-emerald-700">
                 <Recycle className="w-3.5 h-3.5 shrink-0" />
@@ -198,7 +227,7 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
               </span>
             </div>
 
-            {/* Disposable Waste (Uniform Blue + Trash2 icon) */}
+            {/* Disposable Waste */}
             <div className="p-1.5 sm:p-2 bg-blue-50/70 border border-blue-200/80 rounded-xl space-y-0.5">
               <div className="flex items-center gap-1 text-blue-700">
                 <Trash2 className="w-3.5 h-3.5 shrink-0" />
@@ -215,9 +244,9 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
         </div>
       )}
 
-      {/* CARD 1: PIE CHART & SMALL LEGEND */}
+      {/* VIEW 1: WASTE COMPOSITION */}
       {activeCard === 1 && (
-        <div className="flex flex-col items-center justify-center flex-1 min-h-0 relative py-0.5 my-auto">
+        <div className="flex flex-col items-center justify-center flex-1 min-h-0 relative py-0.5 my-auto animate-in fade-in duration-150">
           {/* Centered Donut Pie Chart */}
           <div className="relative w-[98px] h-[98px] shrink-0 flex items-center justify-center">
             <svg
@@ -310,6 +339,19 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* VIEW 2: EFFECT OF BASELINE */}
+      {activeCard === 2 && (
+        <div className="flex flex-col flex-1 min-h-0 pt-0.5 animate-in fade-in duration-150">
+          <BaselineSensitivityChart
+            currentBaselineRate={prediction.baseline_rate_kg_per_person_day || 0}
+            currentTotalWasteKg={Math.round(prediction.total_waste_kg.central) || 0}
+            sensitivitySeries={sensitivitySeries}
+            loading={loading}
+            embedded={true}
+          />
         </div>
       )}
     </div>

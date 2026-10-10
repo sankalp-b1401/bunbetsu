@@ -379,6 +379,71 @@ async function runPlanningContractTests() {
   assert(routeFailedResult.diagnostics.stage_status.routes === 'failed', 'Route stage status must report failed');
   assert(routeFailedResult.diagnostics.warnings[0].includes('Overpass timed out'), 'Diagnostics must record route failure warning');
 
+  // ---------------------------------------------------------------------------
+  // Test 5: Bin recommendations status mapping ('partial' and 'failed')
+  // ---------------------------------------------------------------------------
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      success: true,
+      prediction: {
+        success: true,
+        campus_state: 'Delhi',
+        baseline_rate_kg_per_person_day: 0.11907,
+        baseline_source_year: '2020-21',
+        baseline_rate_source: 'CPCB fallback',
+        baseline_is_national_fallback: true,
+        total_waste_kg: { low: 100, central: 200, high: 300 },
+        composition_kg: {},
+        composition_percent: {},
+        recyclable_kg: { low: 30, central: 60, high: 90 },
+        disposable_kg: { low: 70, central: 140, high: 210 },
+        activity_allocations: [],
+        location_allocations: [],
+        heatmap_data: null,
+        assumptions: [],
+      },
+      bin_recommendations: {
+        status: 'failed',
+        total_bins: 0,
+        capacity_bins: { low: 0, central: 0, high: 0 },
+        recommended_bins: { low: 0, central: 0, high: 0 },
+        stream_counts: null,
+        stream_breakdown_available: false,
+        locations: [],
+        bins: [],
+        bin_capacity_litres: 100.0,
+        usable_fill_fraction: 0.80,
+        emptying_cycles_per_day: 2,
+        effective_capacity_litres_per_bin_per_day: 160.0,
+        boundary_spacing_target_m: 30.0,
+        boundary_inset_m: 1.5,
+        assumptions: [],
+        warnings: ['Bin distribution model produced no valid placements across configured locations.'],
+      },
+      routes: null,
+      diagnostics: {
+        warnings: ['Bin model failed'],
+        errors: [],
+        stage_status: { prediction: 'success', bins: 'failed', routes: 'failed' },
+      },
+    }),
+  } as any);
+
+  const binFailedResult = await requestCampusPlan({
+    campus: mockCampus,
+    eventDetails: mockEvent,
+    locations: mockLocations,
+  });
+
+  assert(binFailedResult.binRecommendations !== null, 'Bin recommendations object must be returned even when failed');
+  assert(binFailedResult.binRecommendations?.status === 'failed', 'Bin recommendations status must be mapped to failed');
+  assert(
+    Boolean(binFailedResult.binRecommendations?.warnings?.[0]?.includes('produced no valid placements')),
+    'Bin recommendations warnings must be preserved'
+  );
+
   // Restore original fetch
   globalThis.fetch = originalFetch;
 
