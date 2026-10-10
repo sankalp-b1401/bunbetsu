@@ -324,21 +324,155 @@ export interface RecommendedBinItem {
   id: string;
   locationId: string;
   locationName?: string;
-  binType: 'General' | 'Recyclable' | 'Food';
+  binType?: 'General' | 'Recyclable' | 'Food' | string;
   coordinates: [number, number]; // [lng, lat]
   capacityLitres?: number;
   allocationNote?: string;
+  binIndex?: number;
+  binScenario?: string;
+  boundaryDistanceM?: number;
+}
+
+export interface LocationBinRecommendationItem {
+  id: string;
+  location_name: string;
+  area: number;
+  activities: string[];
+  capacity_bins: RangeModel;
+  spatial_minimum_bins: number;
+  perimeter_spacing_minimum_bins: number;
+  recommended_bins: RangeModel;
+  placement_scenario: string;
+  boundary_spacing_target_m: number;
+  actual_boundary_spacing_m: number;
+  boundary_inset_m: number;
+  placement_warnings: string[];
+  placement_status: 'placed' | 'unsupported_geometry' | 'failed';
+  bin_placements: RecommendedBinItem[];
 }
 
 export interface BinRecommendationResult {
   totalBins: number;
+  capacityBins?: RangeModel;
+  recommendedBins?: RangeModel;
   streamCounts: {
     general: number;
     recyclable: number;
     food: number;
-  };
+  } | null;
+  streamBreakdownAvailable: boolean;
   bins: RecommendedBinItem[];
+  locations?: LocationBinRecommendationItem[];
   metadata?: Record<string, any>;
+  binCapacityLitres?: number;
+  usableFillFraction?: number;
+  emptyingCyclesPerDay?: number;
+  effectiveCapacityLitresPerBinPerDay?: number;
+  boundarySpacingTargetM?: number;
+  boundaryInsetM?: number;
+  assumptions?: string[];
+  warnings?: string[];
+}
+
+// Unified Planning Pipeline Types
+export interface LocationPlanPayload {
+  id: string;
+  name: string;
+  area: number;
+  activities: ActivityType[];
+  geometry: LocationGeometry;
+  center?: [number, number];
+}
+
+export interface CampusPlanPayload {
+  fest_name: string;
+  total_footfall: number;
+  duration_days: number;
+  campus_state: string;
+  baseline_rate_kg_per_person_day?: number;
+  activities?: ActivityType[];
+  campus_boundary?: any;
+  locations: LocationPlanPayload[];
+  routing_config?: {
+    max_snap_distance_m?: number;
+    overpass_timeout_s?: number;
+    check_barriers?: boolean;
+  };
+}
+
+export interface StageStatus {
+  prediction: 'success' | 'failed';
+  bins: 'success' | 'partial' | 'failed' | 'skipped';
+  routes: 'success' | 'failed' | 'skipped';
+}
+
+export interface CampusPlanDiagnostics {
+  warnings: string[];
+  errors: string[];
+  stage_status: StageStatus;
+}
+
+export interface BackendCampusPlanResponse {
+  success: boolean;
+  prediction: BackendPredictionResponse | null;
+  bin_recommendations: {
+    total_bins: number;
+    capacity_bins: RangeModel;
+    recommended_bins: RangeModel;
+    stream_counts: Record<string, number> | null;
+    stream_breakdown_available: boolean;
+    locations: Array<{
+      id: string;
+      location_name: string;
+      area: number;
+      activities: string[];
+      capacity_bins: RangeModel;
+      spatial_minimum_bins: number;
+      perimeter_spacing_minimum_bins: number;
+      recommended_bins: RangeModel;
+      placement_scenario: string;
+      boundary_spacing_target_m: number;
+      actual_boundary_spacing_m: number;
+      boundary_inset_m: number;
+      placement_warnings: string[];
+      placement_status: 'placed' | 'unsupported_geometry' | 'failed';
+      bin_placements: Array<{
+        id: string;
+        location_id: string;
+        location_name: string;
+        coordinates: [number, number];
+        bin_index: number;
+        bin_scenario: string;
+        boundary_distance_m?: number;
+      }>;
+    }>;
+    bins: Array<{
+      id: string;
+      location_id: string;
+      location_name: string;
+      coordinates: [number, number];
+      bin_index: number;
+      bin_scenario: string;
+      boundary_distance_m?: number;
+    }>;
+    bin_capacity_litres: number;
+    usable_fill_fraction: number;
+    emptying_cycles_per_day: number;
+    effective_capacity_litres_per_bin_per_day: number;
+    boundary_spacing_target_m: number;
+    boundary_inset_m: number;
+    assumptions: string[];
+    warnings: string[];
+  } | null;
+  routes: RoutePlanResult | null;
+  diagnostics: CampusPlanDiagnostics;
+}
+
+export interface CampusPlanResult {
+  prediction: PredictionResult | null;
+  binRecommendations: BinRecommendationResult | null;
+  routeResult: RoutePlanResult | null;
+  diagnostics: CampusPlanDiagnostics;
 }
 
 export interface PlanDashboardProps {
@@ -352,15 +486,16 @@ export interface PlanDashboardProps {
   predictionStale?: boolean;
 
   routeResult: RoutePlanResult | null;
-  routesLoading: boolean;
-  routesError: string | null;
-  routesStale: boolean;
+  routesLoading?: boolean;
+  routesError?: string | null;
+  routesStale?: boolean;
 
   binRecommendations?: BinRecommendationResult | null;
   sensitivitySeries?: BaselineSensitivityPoint[];
+  diagnostics?: CampusPlanDiagnostics | null;
 
   onBackToConfigure: () => void;
   onRecalculatePrediction: () => void;
-  onCalculateRoutes: () => void;
+  onCalculateRoutes?: () => void;
 }
 

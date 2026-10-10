@@ -1212,13 +1212,17 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         const el = document.createElement("div");
         el.className =
           "group flex items-center justify-center cursor-pointer select-none";
-        let bg = "#2563EB";
+        let bg = "#004B20";
         let icon = "🗑️";
-        let label = "Disposable Bin";
+        let label = "Recommended Bin (100L)";
         if (bin.binType === "Recyclable") {
           bg = "#16A34A";
           icon = "♻️";
           label = "Recyclable Bin";
+        } else if (bin.binType === "Disposable") {
+          bg = "#2563EB";
+          icon = "🗑️";
+          label = "Disposable Bin";
         }
         el.innerHTML = `
           <div class="flex items-center justify-center w-6 h-6 rounded-md shadow-md border-1.5 border-white text-xs hover:scale-110 transition-transform" style="background-color: ${bg};" title="${label} (${bin.locationName || bin.locationId})">

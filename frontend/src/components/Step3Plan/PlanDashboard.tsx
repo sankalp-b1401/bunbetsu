@@ -75,7 +75,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
             <span className="font-semibold">
-              Event configuration or locations were modified. Predictions may be out of date.
+              Event configuration or locations were modified. Planning results may be out of date.
             </span>
           </div>
           <button
@@ -85,8 +85,20 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             className="flex items-center gap-1.5 px-3 py-1 bg-[#004B20] hover:bg-[#003B19] text-white rounded-md text-xs font-bold transition cursor-pointer shrink-0"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Recalculate waste model</span>
+            <span>Recalculate plan</span>
           </button>
+        </div>
+      )}
+
+      {/* ROUTING FAILURE WARNING (NON-BLOCKING) */}
+      {routesError && !predictionError && (
+        <div className="p-2.5 bg-amber-50/90 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs shrink-0">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="font-medium text-[11px]">
+              Pedestrian routing notice: {routesError}. Waste estimates and bin placements remain active.
+            </span>
+          </div>
         </div>
       )}
 
@@ -96,7 +108,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
           <div className="flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
             <div>
-              <strong className="block font-bold">Waste Prediction Error</strong>
+              <strong className="block font-bold">Planning Pipeline Error</strong>
               <p className="text-[11px] text-red-800 leading-snug">{predictionError}</p>
             </div>
           </div>
@@ -119,16 +131,16 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
         </div>
       )}
 
-      {/* PREDICTION LOADING FULLSCREEN OVERLAY */}
+      {/* PLANNING PIPELINE LOADING FULLSCREEN OVERLAY */}
       {predictionLoading && (
         <div className="py-12 bg-white rounded-xl border border-[#E1E8DE] flex flex-col items-center justify-center gap-3 text-center shadow-xs flex-1">
           <Loader2 className="w-8 h-8 text-[#004B20] animate-spin" />
           <div className="space-y-1">
             <h3 className="font-heading text-sm font-bold text-[#202820]">
-              Executing Bunbetsu Mathematical Waste Model...
+              Executing Bunbetsu Planning Pipeline...
             </h3>
             <p className="text-xs text-[#667267] max-w-sm">
-              Calculating category compositions, recyclable vs disposable fractions, and spatial location allocations.
+              Calculating waste predictions, spatial bin placement coordinates, and pedestrian route network corridors.
             </p>
           </div>
         </div>

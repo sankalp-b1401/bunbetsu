@@ -26,7 +26,7 @@ from pyproj import CRS, Transformer
 from shapely.geometry import LineString, MultiPolygon, Point, Polygon, shape
 from shapely.ops import transform
 
-from waste_predictor_model.waste_predictor_model import (
+from models.waste_predictor_model.waste_predictor_model import (
     FestInput,
     LocationWasteAllocation,
     WastePrediction,

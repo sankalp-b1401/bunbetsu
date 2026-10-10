@@ -105,6 +105,84 @@ def serialize_range(r: Range) -> RangeSchema:
     return RangeSchema(low=r.low, central=r.central, high=r.high)
 
 
+def serialize_waste_prediction_response(
+    prediction: WastePrediction, request_locations: Any
+) -> WastePredictionResponse:
+    """Serialize a frozen WastePrediction domain object into WastePredictionResponse."""
+    serialized_activity_allocations = [
+        ActivityAllocationResponse(
+            activity=a.activity,
+            normalized_weight=a.normalized_weight,
+            intensity=serialize_range(a.intensity),
+            relative_intensity=serialize_range(a.relative_intensity),
+            internal_waste_range_kg=serialize_range(a.internal_waste_range_kg),
+        )
+        for a in prediction.activity_allocations
+    ]
+
+    serialized_location_allocations = [
+        LocationWasteAllocationResponse(
+            id=req_loc.id,
+            location_id=req_loc.id,
+            location_name=alloc.location_name,
+            area=alloc.area,
+            activities=list(alloc.activities),
+            normalized_share=alloc.normalized_share,
+            total_waste_kg=serialize_range(alloc.total_waste_kg),
+            composition_kg={
+                cat: serialize_range(r) for cat, r in alloc.composition_kg.items()
+            },
+            recyclable_kg=serialize_range(alloc.recyclable_kg),
+            disposable_kg=serialize_range(alloc.disposable_kg),
+        )
+        for req_loc, alloc in zip(request_locations, prediction.location_allocations)
+    ]
+
+    serialized_heatmap = None
+    if prediction.heatmap_data:
+        serialized_heatmap = HeatmapDataResponse(
+            total_waste_kg={
+                k: serialize_range(v)
+                for k, v in prediction.heatmap_data.total_waste_kg.items()
+            },
+            category_waste_kg={
+                cat: {
+                    loc_name: serialize_range(v)
+                    for loc_name, v in loc_dict.items()
+                }
+                for cat, loc_dict in prediction.heatmap_data.category_waste_kg.items()
+            },
+            recyclable_kg={
+                k: serialize_range(v)
+                for k, v in prediction.heatmap_data.recyclable_kg.items()
+            },
+            disposable_kg={
+                k: serialize_range(v)
+                for k, v in prediction.heatmap_data.disposable_kg.items()
+            },
+        )
+
+    return WastePredictionResponse(
+        success=True,
+        campus_state=prediction.campus_state,
+        baseline_rate_kg_per_person_day=prediction.baseline_rate_kg_per_person_day,
+        baseline_source_year=prediction.baseline_source_year,
+        baseline_rate_source=prediction.baseline_rate_source,
+        baseline_is_national_fallback=prediction.baseline_is_national_fallback,
+        total_waste_kg=serialize_range(prediction.total_waste_kg),
+        composition_kg={
+            cat: serialize_range(r) for cat, r in prediction.composition_kg.items()
+        },
+        composition_percent=dict(prediction.composition_percent),
+        recyclable_kg=serialize_range(prediction.recyclable_kg),
+        disposable_kg=serialize_range(prediction.disposable_kg),
+        activity_allocations=serialized_activity_allocations,
+        location_allocations=serialized_location_allocations,
+        heatmap_data=serialized_heatmap,
+        assumptions=list(prediction.assumptions),
+    )
+
+
 @router.post(
     "/waste",
     response_model=WastePredictionResponse,
@@ -176,78 +254,4 @@ async def predict_waste(request: WastePredictionRequest) -> WastePredictionRespo
             detail=f"Internal error executing waste model: {exc}",
         )
 
-    # 4. Serialize activity allocations
-    serialized_activity_allocations = [
-        ActivityAllocationResponse(
-            activity=a.activity,
-            normalized_weight=a.normalized_weight,
-            intensity=serialize_range(a.intensity),
-            relative_intensity=serialize_range(a.relative_intensity),
-            internal_waste_range_kg=serialize_range(a.internal_waste_range_kg),
-        )
-        for a in prediction.activity_allocations
-    ]
-
-    # 5. Serialize location allocations preserving original stable request IDs
-    serialized_location_allocations = [
-        LocationWasteAllocationResponse(
-            id=req_loc.id,
-            location_id=req_loc.id,
-            location_name=alloc.location_name,
-            area=alloc.area,
-            activities=list(alloc.activities),
-            normalized_share=alloc.normalized_share,
-            total_waste_kg=serialize_range(alloc.total_waste_kg),
-            composition_kg={
-                cat: serialize_range(r) for cat, r in alloc.composition_kg.items()
-            },
-            recyclable_kg=serialize_range(alloc.recyclable_kg),
-            disposable_kg=serialize_range(alloc.disposable_kg),
-        )
-        for req_loc, alloc in zip(request.locations, prediction.location_allocations)
-    ]
-
-    # 6. Serialize heatmap data
-    serialized_heatmap = None
-    if prediction.heatmap_data:
-        serialized_heatmap = HeatmapDataResponse(
-            total_waste_kg={
-                k: serialize_range(v)
-                for k, v in prediction.heatmap_data.total_waste_kg.items()
-            },
-            category_waste_kg={
-                cat: {
-                    loc_name: serialize_range(v)
-                    for loc_name, v in loc_dict.items()
-                }
-                for cat, loc_dict in prediction.heatmap_data.category_waste_kg.items()
-            },
-            recyclable_kg={
-                k: serialize_range(v)
-                for k, v in prediction.heatmap_data.recyclable_kg.items()
-            },
-            disposable_kg={
-                k: serialize_range(v)
-                for k, v in prediction.heatmap_data.disposable_kg.items()
-            },
-        )
-
-    return WastePredictionResponse(
-        success=True,
-        campus_state=prediction.campus_state,
-        baseline_rate_kg_per_person_day=prediction.baseline_rate_kg_per_person_day,
-        baseline_source_year=prediction.baseline_source_year,
-        baseline_rate_source=prediction.baseline_rate_source,
-        baseline_is_national_fallback=prediction.baseline_is_national_fallback,
-        total_waste_kg=serialize_range(prediction.total_waste_kg),
-        composition_kg={
-            cat: serialize_range(r) for cat, r in prediction.composition_kg.items()
-        },
-        composition_percent=dict(prediction.composition_percent),
-        recyclable_kg=serialize_range(prediction.recyclable_kg),
-        disposable_kg=serialize_range(prediction.disposable_kg),
-        activity_allocations=serialized_activity_allocations,
-        location_allocations=serialized_location_allocations,
-        heatmap_data=serialized_heatmap,
-        assumptions=list(prediction.assumptions),
-    )
+    return serialize_waste_prediction_response(prediction, request.locations)

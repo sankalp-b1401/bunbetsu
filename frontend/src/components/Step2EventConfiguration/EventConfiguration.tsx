@@ -398,7 +398,7 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
               {isPredicting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Executing Waste Model...</span>
+                  <span>Planning Waste, Bins & Routes...</span>
                 </>
               ) : (
                 <span>Plan</span>
