@@ -142,7 +142,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </div>
 
         {/* Placements Cards */}
-        {placements.length > 0 && (
+        {placements.length > 0 ? (
           <div className="p-2 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE] space-y-1.5 text-[11px]">
             <div className="flex items-center justify-between text-[#202820] font-bold border-b border-[#E1E8DE] pb-1">
               <span>Selected road stations ({placements.length})</span>
@@ -166,10 +166,13 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
                         <span className="truncate text-[10.5px]">{names}</span>
                       </div>
                       <div className="text-[9.5px] text-[#667267] truncate">
-                        Road: {p.source_segment_id}
+                        Road: {p.source_segment_id || 'Path segment'}
+                        {p.coordinates && p.coordinates.length >= 2 && (
+                          <span> · [{p.coordinates[0].toFixed(4)}, {p.coordinates[1].toFixed(4)}]</span>
+                        )}
                         {p.served_location_distances_m &&
                           Object.entries(p.served_location_distances_m).length > 0 && (
-                            <span> · {Object.values(p.served_location_distances_m)[0]}m from edge</span>
+                            <span> · {Math.round(Object.values(p.served_location_distances_m)[0])}m from edge</span>
                           )}
                       </div>
                     </div>
@@ -180,6 +183,14 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
                 );
               })}
             </div>
+          </div>
+        ) : (
+          <div className="p-3 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE] text-center space-y-1 my-1">
+            <Info className="w-5 h-5 text-amber-600 mx-auto" />
+            <p className="text-xs font-bold text-[#202820]">No road bins placed</p>
+            <p className="text-[10.5px] text-[#667267] leading-relaxed">
+              No pedestrian road segments qualified within activity influence zones or zero additional bins were required.
+            </p>
           </div>
         )}
 

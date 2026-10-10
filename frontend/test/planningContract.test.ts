@@ -483,6 +483,220 @@ async function runPlanningContractTests() {
     'Bin recommendations warnings must be preserved'
   );
 
+  // ---------------------------------------------------------------------------
+  // Test 6: Road-bin recommendations contract & coordinate preservation
+  // ---------------------------------------------------------------------------
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      success: true,
+      prediction: {
+        success: true,
+        campus_state: 'Delhi',
+        baseline_rate_kg_per_person_day: 0.11907,
+        baseline_source_year: '2020-21',
+        baseline_rate_source: 'CPCB fallback',
+        baseline_is_national_fallback: true,
+        total_waste_kg: { low: 100, central: 200, high: 300 },
+        composition_kg: {},
+        composition_percent: {},
+        recyclable_kg: { low: 30, central: 60, high: 90 },
+        disposable_kg: { low: 70, central: 140, high: 210 },
+        activity_allocations: [],
+        location_allocations: [],
+        heatmap_data: null,
+        assumptions: [],
+      },
+      bin_recommendations: {
+        status: 'success',
+        total_bins: 4,
+        capacity_bins: { low: 2, central: 4, high: 6 },
+        recommended_bins: { low: 2, central: 4, high: 6 },
+        stream_counts: { disposable: 2, recyclable: 2 },
+        stream_breakdown_available: true,
+        locations: [],
+        bins: [
+          {
+            id: 'onloc-bin-1',
+            location_id: 'loc-oat',
+            location_name: 'Open Air Theatre',
+            coordinates: [77.189, 28.543],
+            bin_index: 0,
+            bin_type: 'Disposable',
+            bin_scenario: 'balanced',
+          },
+        ],
+        bin_capacity_litres: 100.0,
+        usable_fill_fraction: 0.80,
+        usable_bin_capacity_litres: 80.0,
+        boundary_spacing_target_m: 25.0,
+        boundary_inset_m: 1.5,
+        assumptions: [],
+        warnings: [],
+      },
+      road_bin_recommendations: {
+        total_road_bins: 2,
+        total_eligible_candidates: 15,
+        total_locations_requiring_coverage: 2,
+        covered_location_ids: ['loc-oat', 'loc-food'],
+        uncovered_location_ids: [],
+        location_influence_radii_m: { 'loc-oat': 25.0, 'loc-food': 15.0 },
+        location_dominant_waste_types: { 'loc-oat': 'Paper', 'loc-food': 'Food' },
+        candidate_sampling_interval_m: 5.0,
+        road_bin_spacing_m: 25.0,
+        solver_name: 'highs',
+        optimality_proven: true,
+        total_popularity_score: 1.85,
+        placements: [
+          {
+            id: 'road-bin-1',
+            coordinates: [77.1895, 28.5425],
+            source_segment_id: 'way-12345-seg-1',
+            source_way_id: 12345,
+            normalized_popularity_score: 0.95,
+            served_location_ids: ['loc-oat'],
+            served_location_names: ['Open Air Theatre'],
+            served_location_distances_m: { 'loc-oat': 8.4 },
+            stream_type: 'Dual-compartment station',
+            provenance: 'road_bin_optimizer',
+          },
+          {
+            id: 'road-bin-2',
+            coordinates: [77.1915, 28.5435],
+            source_segment_id: 'way-67890-seg-3',
+            source_way_id: 67890,
+            normalized_popularity_score: 0.90,
+            served_location_ids: ['loc-food'],
+            served_location_names: ['Food Court'],
+            served_location_distances_m: { 'loc-food': 11.2 },
+            stream_type: 'Dual-compartment station',
+            provenance: 'road_bin_optimizer',
+          },
+        ],
+        warnings: [],
+        assumptions: ['Provisional baseline radii'],
+      },
+      routes: null,
+      diagnostics: {
+        warnings: [],
+        errors: [],
+        stage_status: { prediction: 'success', bins: 'success', routes: 'skipped' },
+      },
+    }),
+  } as any);
+
+  const roadBinPlanResult = await requestCampusPlan({
+    campus: mockCampus,
+    eventDetails: mockEvent,
+    locations: mockLocations,
+  });
+
+  assert(roadBinPlanResult.roadBinRecommendations !== null, 'roadBinRecommendations must be present');
+  assert(roadBinPlanResult.roadBinRecommendations?.total_road_bins === 2, 'total_road_bins must be 2');
+  assert(roadBinPlanResult.roadBinRecommendations?.optimality_proven === true, 'optimality_proven must be true');
+  assert(roadBinPlanResult.roadBinRecommendations?.solver_name === 'highs', 'solver_name must be highs');
+  assert(roadBinPlanResult.roadBinRecommendations?.placements.length === 2, 'placements length must be 2');
+
+  const p1 = roadBinPlanResult.roadBinRecommendations!.placements[0];
+  assert(p1.id === 'road-bin-1', 'First placement ID must match');
+  assert(p1.coordinates[0] === 77.1895 && p1.coordinates[1] === 28.5425, 'Coordinate order [lng, lat] must be preserved');
+  assert(p1.source_segment_id === 'way-12345-seg-1', 'source_segment_id must match');
+  assert(p1.normalized_popularity_score === 0.95, 'popularity score must match');
+  assert(p1.served_location_names[0] === 'Open Air Theatre', 'served_location_names must match');
+  assert(p1.served_location_distances_m['loc-oat'] === 8.4, 'distance from boundary must match');
+
+  // Both on-location bins and road bins coexist without overwriting
+  assert(roadBinPlanResult.binRecommendations?.totalBins === 4, 'On-location bin count must remain preserved');
+  assert(roadBinPlanResult.binRecommendations?.bins.length === 1, 'On-location markers must remain preserved');
+
+  // ---------------------------------------------------------------------------
+  // Test 7: Empty road-bin result (zero bins placed)
+  // ---------------------------------------------------------------------------
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      success: true,
+      prediction: {
+        success: true,
+        campus_state: 'Delhi',
+        total_waste_kg: { low: 100, central: 200, high: 300 },
+        recyclable_kg: { low: 30, central: 60, high: 90 },
+        disposable_kg: { low: 70, central: 140, high: 210 },
+      },
+      bin_recommendations: null,
+      road_bin_recommendations: {
+        total_road_bins: 0,
+        total_eligible_candidates: 0,
+        total_locations_requiring_coverage: 2,
+        covered_location_ids: [],
+        uncovered_location_ids: ['loc-oat', 'loc-food'],
+        location_influence_radii_m: { 'loc-oat': 25.0, 'loc-food': 15.0 },
+        location_dominant_waste_types: { 'loc-oat': 'Paper', 'loc-food': 'Food' },
+        candidate_sampling_interval_m: 5.0,
+        road_bin_spacing_m: 25.0,
+        solver_name: 'highs',
+        optimality_proven: false,
+        total_popularity_score: 0.0,
+        placements: [],
+        warnings: ['No candidates available within influence zones'],
+        assumptions: [],
+      },
+      routes: null,
+      diagnostics: {
+        warnings: [],
+        errors: [],
+        stage_status: { prediction: 'success', bins: 'skipped', routes: 'skipped' },
+      },
+    }),
+  } as any);
+
+  const emptyRoadBinResult = await requestCampusPlan({
+    campus: mockCampus,
+    eventDetails: mockEvent,
+    locations: mockLocations,
+  });
+
+  assert(emptyRoadBinResult.roadBinRecommendations !== null, 'Empty road-bin result must still be an object, not null');
+  assert(emptyRoadBinResult.roadBinRecommendations?.total_road_bins === 0, 'total_road_bins must be 0');
+  assert(emptyRoadBinResult.roadBinRecommendations?.placements.length === 0, 'placements must be empty array');
+  assert(emptyRoadBinResult.roadBinRecommendations?.uncovered_location_ids.length === 2, 'Uncovered locations must be reported');
+
+  // ---------------------------------------------------------------------------
+  // Test 8: Missing/failed road-bin stage (road_bin_recommendations is null)
+  // ---------------------------------------------------------------------------
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      success: true,
+      prediction: {
+        success: true,
+        campus_state: 'Delhi',
+        total_waste_kg: { low: 100, central: 200, high: 300 },
+        recyclable_kg: { low: 30, central: 60, high: 90 },
+        disposable_kg: { low: 70, central: 140, high: 210 },
+      },
+      bin_recommendations: null,
+      road_bin_recommendations: null,
+      routes: null,
+      diagnostics: {
+        warnings: ['Road bin stage failed'],
+        errors: [],
+        stage_status: { prediction: 'success', bins: 'skipped', routes: 'failed' },
+      },
+    }),
+  } as any);
+
+  const missingRoadBinResult = await requestCampusPlan({
+    campus: mockCampus,
+    eventDetails: mockEvent,
+    locations: mockLocations,
+  });
+
+  assert(missingRoadBinResult.roadBinRecommendations === null, 'Missing road-bin response must map to null (unavailable)');
+
   // Restore original fetch
   globalThis.fetch = originalFetch;
 

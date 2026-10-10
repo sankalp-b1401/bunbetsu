@@ -1367,6 +1367,17 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
     if (showBins && binRecommendations?.bins?.length) {
       binRecommendations.bins.forEach((bin) => {
+        if (
+          !bin.coordinates ||
+          bin.coordinates.length < 2 ||
+          isNaN(bin.coordinates[0]) ||
+          isNaN(bin.coordinates[1]) ||
+          (bin.coordinates[0] === 0 && bin.coordinates[1] === 0)
+        ) {
+          console.warn(`[CampusMap] Skipping on-location bin marker ${bin.id} with invalid coordinates:`, bin.coordinates);
+          return;
+        }
+
         const el = document.createElement("div");
         el.className =
           "group flex items-center justify-center cursor-pointer select-none";
@@ -1397,6 +1408,17 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     // Visually distinct road-bin placement markers
     if (showBins && roadBinRecommendations?.placements?.length) {
       roadBinRecommendations.placements.forEach((rbin) => {
+        if (
+          !rbin.coordinates ||
+          rbin.coordinates.length < 2 ||
+          isNaN(rbin.coordinates[0]) ||
+          isNaN(rbin.coordinates[1]) ||
+          (rbin.coordinates[0] === 0 && rbin.coordinates[1] === 0)
+        ) {
+          console.warn(`[CampusMap] Skipping road bin marker ${rbin.id} with invalid coordinates:`, rbin.coordinates);
+          return;
+        }
+
         const el = document.createElement("div");
         el.className =
           "group flex items-center justify-center cursor-pointer select-none";

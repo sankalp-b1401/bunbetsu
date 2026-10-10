@@ -17,6 +17,7 @@ import {
   ActivityType,
   RoutePlanResult,
   BinRecommendationResult,
+  RoadBinRecommendationResult,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
 
@@ -47,6 +48,7 @@ export default function App() {
   // Unified planning pipeline state
   const [predictionResult, setPredictionResult] = useState<PredictionResult | null>(null);
   const [binRecommendations, setBinRecommendations] = useState<BinRecommendationResult | null>(null);
+  const [roadBinRecommendations, setRoadBinRecommendations] = useState<RoadBinRecommendationResult | null>(null);
   const [routeResult, setRouteResult] = useState<RoutePlanResult | null>(null);
   const [isPlanning, setIsPlanning] = useState<boolean>(false);
   const [planningError, setPlanningError] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export default function App() {
     setSelectedLocationId(null);
     setPredictionResult(null);
     setBinRecommendations(null);
+    setRoadBinRecommendations(null);
     setRouteResult(null);
     setPlanningError(null);
     setRoutesError(null);
@@ -83,7 +86,7 @@ export default function App() {
   const handleUpdateEventDetails = (partial: Partial<EventDetails>) => {
     setEventDetails((prev) => ({ ...prev, ...partial }));
     if (planningError) setPlanningError(null);
-    if (predictionResult || binRecommendations || routeResult) {
+    if (predictionResult || binRecommendations || roadBinRecommendations || routeResult) {
       setIsPlanStale(true);
     }
   };
@@ -97,7 +100,7 @@ export default function App() {
       prev.map((loc) => (loc.id === updatedLocation.id ? { ...loc, ...updatedLocation } : loc))
     );
     if (planningError) setPlanningError(null);
-    if (predictionResult || binRecommendations || routeResult) {
+    if (predictionResult || binRecommendations || roadBinRecommendations || routeResult) {
       setIsPlanStale(true);
     }
   };
@@ -112,7 +115,7 @@ export default function App() {
       setSelectedLocationId(null);
     }
     if (planningError) setPlanningError(null);
-    if (predictionResult || binRecommendations || routeResult) {
+    if (predictionResult || binRecommendations || roadBinRecommendations || routeResult) {
       setIsPlanStale(true);
     }
   };
@@ -133,7 +136,7 @@ export default function App() {
     // Remove from configured event locations if present and mark plan stale
     const wasConfigured = locations.some((l) => l.id === areaId);
     setLocations((prev) => prev.filter((l) => l.id !== areaId));
-    if (wasConfigured && (predictionResult || binRecommendations || routeResult)) {
+    if (wasConfigured && (predictionResult || binRecommendations || roadBinRecommendations || routeResult)) {
       setIsPlanStale(true);
     }
 
@@ -162,7 +165,7 @@ export default function App() {
     });
     setSelectedLocationId(customLoc.id);
     if (planningError) setPlanningError(null);
-    if (predictionResult || binRecommendations || routeResult) {
+    if (predictionResult || binRecommendations || roadBinRecommendations || routeResult) {
       setIsPlanStale(true);
     }
   };
@@ -225,6 +228,7 @@ export default function App() {
 
       setPredictionResult(result.prediction);
       setBinRecommendations(result.binRecommendations);
+      setRoadBinRecommendations(result.roadBinRecommendations ?? null);
       setRouteResult(result.routeResult);
       setIsPlanStale(false);
 
@@ -241,6 +245,11 @@ export default function App() {
       }
     } catch (err: any) {
       setPlanningError(err.message || 'Failed to execute event planning pipeline.');
+      // Handle planning failures without displaying road-bin or bin results from a previous campus or previous plan
+      setPredictionResult(null);
+      setBinRecommendations(null);
+      setRoadBinRecommendations(null);
+      setRouteResult(null);
     } finally {
       setIsPlanning(false);
     }
@@ -321,6 +330,7 @@ export default function App() {
           setSelectedLocationId(null);
           setPredictionResult(null);
           setBinRecommendations(null);
+          setRoadBinRecommendations(null);
           setRouteResult(null);
           setPlanningError(null);
           setRoutesError(null);
@@ -370,6 +380,7 @@ export default function App() {
             routesError={routesError}
             routesStale={isPlanStale}
             binRecommendations={binRecommendations}
+            roadBinRecommendations={roadBinRecommendations}
             onBackToConfigure={() => setCurrentStep(2)}
             onRecalculatePrediction={executePlan}
           />

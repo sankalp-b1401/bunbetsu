@@ -19,6 +19,7 @@ import {
   LocationWasteAllocation,
   PredictionResult,
   RecommendedBinItem,
+  RoadBinRecommendationResult,
 } from '../types/bunbetsu';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
@@ -432,10 +433,45 @@ export async function requestCampusPlan(
     };
   }
 
+  // 6. Transform road bin recommendations output
+  let roadBinRecommendations: RoadBinRecommendationResult | null = null;
+  if (data.road_bin_recommendations) {
+    const rawRoad = data.road_bin_recommendations;
+    roadBinRecommendations = {
+      total_road_bins: Number(rawRoad.total_road_bins ?? rawRoad.placements?.length ?? 0),
+      total_eligible_candidates: Number(rawRoad.total_eligible_candidates ?? 0),
+      total_locations_requiring_coverage: Number(rawRoad.total_locations_requiring_coverage ?? 0),
+      covered_location_ids: Array.isArray(rawRoad.covered_location_ids) ? rawRoad.covered_location_ids : [],
+      uncovered_location_ids: Array.isArray(rawRoad.uncovered_location_ids) ? rawRoad.uncovered_location_ids : [],
+      location_influence_radii_m: rawRoad.location_influence_radii_m || {},
+      location_dominant_waste_types: rawRoad.location_dominant_waste_types || {},
+      candidate_sampling_interval_m: Number(rawRoad.candidate_sampling_interval_m ?? 5.0),
+      road_bin_spacing_m: Number(rawRoad.road_bin_spacing_m ?? 25.0),
+      solver_name: String(rawRoad.solver_name || 'unknown'),
+      optimality_proven: Boolean(rawRoad.optimality_proven),
+      total_popularity_score: Number(rawRoad.total_popularity_score ?? 0),
+      placements: Array.isArray(rawRoad.placements)
+        ? rawRoad.placements.map((p: any) => ({
+            id: String(p.id),
+            coordinates: [Number(p.coordinates[0]), Number(p.coordinates[1])] as [number, number],
+            source_segment_id: String(p.source_segment_id || ''),
+            normalized_popularity_score: Number(p.normalized_popularity_score ?? 0),
+            served_location_ids: Array.isArray(p.served_location_ids) ? p.served_location_ids : [],
+            served_location_names: Array.isArray(p.served_location_names) ? p.served_location_names : [],
+            served_location_distances_m: p.served_location_distances_m || {},
+            stream_type: String(p.stream_type || 'Dual-compartment station'),
+            provenance: String(p.provenance || 'road_bin_optimizer'),
+          }))
+        : [],
+      warnings: Array.isArray(rawRoad.warnings) ? rawRoad.warnings : [],
+      assumptions: Array.isArray(rawRoad.assumptions) ? rawRoad.assumptions : [],
+    };
+  }
+
   return {
     prediction: predictionResult,
     binRecommendations,
-    roadBinRecommendations: data.road_bin_recommendations || null,
+    roadBinRecommendations,
     routeResult: data.routes || null,
     diagnostics: data.diagnostics,
   };

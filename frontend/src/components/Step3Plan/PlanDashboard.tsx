@@ -54,7 +54,10 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
 
-  const binsAvailable = Boolean(binRecommendations && binRecommendations.bins && binRecommendations.bins.length > 0);
+  const binsAvailable = Boolean(
+    (binRecommendations && binRecommendations.bins && binRecommendations.bins.length > 0) ||
+    (roadBinRecommendations && roadBinRecommendations.placements && roadBinRecommendations.placements.length > 0)
+  );
   const routesAvailable = Boolean(routeResult && routeResult.success);
 
   const handleSelectLocation = (locId: string) => {
