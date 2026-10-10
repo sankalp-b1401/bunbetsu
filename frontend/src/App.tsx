@@ -31,9 +31,9 @@ export default function App() {
 
   // Event details state
   const [eventDetails, setEventDetails] = useState<EventDetails>({
-    festName: 'Techfest 2025',
-    durationDays: 3,
-    expectedFootfall: 10000,
+    festName: '',
+    durationDays: 0,
+    expectedFootfall: 0,
     baselineRateKgPerPersonDay: 0.45, // Calibrated standard benchmark
   });
 

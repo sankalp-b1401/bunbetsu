@@ -156,8 +156,8 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                   type="text"
                   value={eventDetails.festName}
                   onChange={(e) => onUpdateEventDetails({ festName: e.target.value })}
-                  placeholder="e.g. Techfest 2025"
-                  className="w-full px-3.5 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
+                  placeholder="e.g. Techfest, Spring Fest, Annual Day"
+                  className="w-full px-3.5 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] placeholder:text-[#667267] placeholder:font-normal text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
                 />
                 {validationErrors.festName && (
                   <p className="text-xs text-[#B42318] font-medium">{validationErrors.festName}</p>
@@ -177,13 +177,15 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                       type="number"
                       min="1"
                       max="60"
-                      value={eventDetails.durationDays}
-                      onChange={(e) =>
+                      value={eventDetails.durationDays || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
                         onUpdateEventDetails({
-                          durationDays: Math.max(1, parseInt(e.target.value) || 1),
-                        })
-                      }
-                      className="w-full pl-9 pr-3 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
+                          durationDays: val === '' ? 0 : Math.max(0, parseInt(val) || 0),
+                        });
+                      }}
+                      placeholder="e.g. 3"
+                      className="w-full pl-9 pr-3 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] placeholder:text-[#667267] placeholder:font-normal text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
                     />
                   </div>
                   {validationErrors.durationDays && (
@@ -201,13 +203,15 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     <input
                       type="number"
                       min="1"
-                      value={eventDetails.expectedFootfall}
-                      onChange={(e) =>
+                      value={eventDetails.expectedFootfall || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
                         onUpdateEventDetails({
-                          expectedFootfall: Math.max(1, parseInt(e.target.value) || 0),
-                        })
-                      }
-                      className="w-full pl-9 pr-3 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
+                          expectedFootfall: val === '' ? 0 : Math.max(0, parseInt(val) || 0),
+                        });
+                      }}
+                      placeholder="e.g. 5000"
+                      className="w-full pl-9 pr-3 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] placeholder:text-[#667267] placeholder:font-normal text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
                     />
                   </div>
                   {validationErrors.expectedFootfall && (
