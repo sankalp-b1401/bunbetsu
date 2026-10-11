@@ -46,15 +46,15 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
             <button
               type="button"
               onClick={onSaveHistory}
-              disabled={isSavingHistory || hasSavedHistory}
+              disabled={isSavingHistory}
               className={`text-[10px] font-bold px-2 py-0.5 rounded border transition cursor-pointer flex items-center gap-1 shrink-0 ${
                 hasSavedHistory
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 cursor-default'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
                   : 'text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] border-[#70D000]/30'
               }`}
-              title="Save this completed plan to your event history"
+              title={hasSavedHistory ? 'Plan saved in history. Click to save a copy or rename.' : 'Save this completed plan to your event history'}
             >
-              <span>{hasSavedHistory ? 'Saved to history' : 'Save plan'}</span>
+              <span>{hasSavedHistory ? '✓ Saved to history' : 'Save plan'}</span>
             </button>
           )}
 

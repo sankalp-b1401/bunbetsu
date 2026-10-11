@@ -12,6 +12,7 @@ interface NavbarProps {
   onGoToDashboard?: () => void;
   user?: AuthUser | null;
   isDashboard?: boolean;
+  isHistoricalView?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onGoToDashboard,
   user,
   isDashboard = false,
+  isHistoricalView = false,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             src="/bunbetsu-logo.png"
             alt="BUNBETSU"
             className="h-8 sm:h-9 md:h-9.5 w-auto max-w-[200px] sm:max-w-[240px] object-contain cursor-pointer select-none transition-opacity hover:opacity-90 active:opacity-75"
-            onClick={() => (onGoToDashboard ? onGoToDashboard() : onStepClick?.(1))}
+            onClick={() => (onGoToDashboard ? onGoToDashboard() : !isHistoricalView ? onStepClick?.(1) : undefined)}
             title="Bunbetsu - Campus Venue Waste Planner"
           />
         </div>
@@ -72,23 +74,29 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Step 1: Campus */}
             <button
               type="button"
-              onClick={() => onStepClick?.(1)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs cursor-pointer transition-all font-sans ${
-                currentStep === 1
-                  ? 'bg-white text-[#004B20] shadow-xs border border-[#E1E8DE]/90 font-bold'
-                  : 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium'
+              onClick={() => !isHistoricalView && onStepClick?.(1)}
+              disabled={isHistoricalView}
+              title={isHistoricalView ? 'Read-only history mode: campus step disabled' : ''}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
+                isHistoricalView
+                  ? 'opacity-40 cursor-not-allowed text-[#667267]/60'
+                  : currentStep === 1
+                  ? 'bg-white text-[#004B20] shadow-xs border border-[#E1E8DE]/90 font-bold cursor-pointer'
+                  : 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium cursor-pointer'
               }`}
             >
               <div
                 className={`w-4.5 h-4.5 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${
-                  step1Completed && currentStep !== 1
+                  isHistoricalView
+                    ? 'bg-[#E1E8DE] text-[#667267]'
+                    : step1Completed && currentStep !== 1
                     ? 'bg-[#004B20] text-[#70D000]'
                     : currentStep === 1
                     ? 'bg-[#70D000] text-[#004B20]'
                     : 'bg-[#E1E8DE] text-[#667267]'
                 }`}
               >
-                {step1Completed && currentStep !== 1 ? (
+                {step1Completed && currentStep !== 1 && !isHistoricalView ? (
                   <Check className="w-2.5 h-2.5 stroke-[3]" />
                 ) : (
                   '1'
@@ -102,11 +110,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Step 2: Configure */}
             <button
               type="button"
-              onClick={() => step1Completed && onStepClick?.(2)}
-              disabled={!step1Completed}
-              title={!step1Completed ? 'Confirm Campus on Step 1 first' : ''}
+              onClick={() => !isHistoricalView && step1Completed && onStepClick?.(2)}
+              disabled={isHistoricalView || !step1Completed}
+              title={
+                isHistoricalView
+                  ? 'Read-only history mode: configure step disabled'
+                  : !step1Completed
+                  ? 'Confirm Campus on Step 1 first'
+                  : ''
+              }
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
-                currentStep === 2
+                isHistoricalView
+                  ? 'opacity-40 cursor-not-allowed text-[#667267]/60'
+                  : currentStep === 2
                   ? 'bg-white text-[#004B20] shadow-xs border border-[#E1E8DE]/90 font-bold'
                   : currentStep > 2
                   ? 'text-[#667267] hover:text-[#202820] hover:bg-white/60 font-medium cursor-pointer'
@@ -117,14 +133,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <div
                 className={`w-4.5 h-4.5 rounded-md flex items-center justify-center text-[10px] font-bold transition-all ${
-                  currentStep > 2
+                  isHistoricalView
+                    ? 'bg-[#E1E8DE] text-[#667267]'
+                    : currentStep > 2
                     ? 'bg-[#004B20] text-[#70D000]'
                     : currentStep === 2
                     ? 'bg-[#70D000] text-[#004B20]'
                     : 'bg-[#E1E8DE] text-[#667267]'
                 }`}
               >
-                {currentStep > 2 ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : '2'}
+                {currentStep > 2 && !isHistoricalView ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : '2'}
               </div>
               <span>Configure</span>
             </button>
@@ -154,7 +172,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 3
               </div>
-              <span>Plan</span>
+              <span>{isHistoricalView ? 'Plan (Read-only)' : 'Plan'}</span>
             </button>
           </nav>
         )}

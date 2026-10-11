@@ -378,6 +378,32 @@ async function runHistoryIntegrationTests() {
   );
   console.log('✓ App.tsx historical restoration without live recalculation verified');
 
+  // Contract: Event history must not allow going back to configure or campus step
+  assert.ok(
+    appContent.includes('isHistoricalView && step !== 3'),
+    'App.tsx handleStepClick must block navigation to campus or configure steps when isHistoricalView is true'
+  );
+  assert.ok(
+    appContent.includes('onBackToConfigure={isHistoricalView ? undefined :'),
+    'App.tsx must not provide onBackToConfigure callback when isHistoricalView is true'
+  );
+
+  const navbarPath = path.join(__dirname, '../src/components/Navbar.tsx');
+  const navbarContent = fs.readFileSync(navbarPath, 'utf-8');
+  assert.ok(
+    navbarContent.includes('isHistoricalView'),
+    'Navbar.tsx must accept and handle isHistoricalView'
+  );
+  assert.ok(
+    navbarContent.includes('disabled={isHistoricalView}'),
+    'Navbar.tsx must disable Step 1 Campus in historical view'
+  );
+  assert.ok(
+    navbarContent.includes('disabled={isHistoricalView || !step1Completed}'),
+    'Navbar.tsx must disable Step 2 Configure in historical view'
+  );
+  console.log('✓ Navigation lockout (no return to campus/configure in history) verified');
+
   // PlanDashboard.tsx contracts
   const planDashboardPath = path.join(__dirname, '../src/components/Step3Plan/PlanDashboard.tsx');
   const planDashboardContent = fs.readFileSync(planDashboardPath, 'utf-8');

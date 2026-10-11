@@ -160,13 +160,15 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
             >
               Retry
             </button>
-            <button
-              type="button"
-              onClick={onBackToConfigure}
-              className="px-3 py-1.5 bg-white border border-[#E1E8DE] rounded-md text-xs font-bold text-[#202820] hover:bg-[#F4F6F2] transition cursor-pointer"
-            >
-              Back to Configure
-            </button>
+            {!isHistoricalView && onBackToConfigure && (
+              <button
+                type="button"
+                onClick={onBackToConfigure}
+                className="px-3 py-1.5 bg-white border border-[#E1E8DE] rounded-md text-xs font-bold text-[#202820] hover:bg-[#F4F6F2] transition cursor-pointer"
+              >
+                Back to Configure
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -394,6 +394,42 @@ export default function App() {
           ) || 'Pedestrian routing was unavailable for this campus boundary.';
         setRoutesError(routeWarn);
       }
+
+      // Auto-save successful plan into event history for authenticated users
+      if (user && !user.isGuest && isSupabaseConfigured && result.prediction) {
+        try {
+          const snapshot: EventHistorySnapshot = {
+            schema_version: 1,
+            campus: selectedCampus,
+            allCampusLocations: allCampusLocations,
+            locations: locations,
+            eventDetails: eventDetails,
+            entryGate: entryGate,
+            prediction: result.prediction,
+            binRecommendations: result.binRecommendations,
+            roadBinRecommendations: result.roadBinRecommendations ?? null,
+            routeResult: result.routeResult,
+            diagnostics: result.diagnostics ?? null,
+            savedAt: new Date().toISOString(),
+          };
+
+          await saveEventHistory({
+            eventName: eventDetails.festName.trim() || `${selectedCampus.name} Event`,
+            campusName: selectedCampus.name,
+            snapshot,
+          });
+
+          setHasSavedHistory(true);
+          await refreshEvents();
+          setToastMessage(`Plan for "${eventDetails.festName.trim() || selectedCampus.name}" saved to history.`);
+          setTimeout(() => setToastMessage(null), 4000);
+        } catch (saveErr) {
+          console.warn('[Bunbetsu] Auto-save event history error:', saveErr);
+        }
+      } else if (user?.isGuest) {
+        setToastMessage('Plan generated. (Guest mode: sign in to save plans to history)');
+        setTimeout(() => setToastMessage(null), 4500);
+      }
     } catch (err: any) {
       setPlanningError(err.message || 'Failed to execute event planning pipeline.');
       // Handle planning failures without displaying road-bin or bin results from a previous campus or previous plan
@@ -474,6 +510,10 @@ export default function App() {
     eventDetails.expectedFootfall > 0;
 
   const handleStepClick = (step: 1 | 2 | 3) => {
+    // Historical event plan is read-only; cannot go back to configure or campus step
+    if (isHistoricalView && step !== 3) {
+      return;
+    }
     if (step === 3 && !canGoToPlan) {
       if (!entryGate) {
         setPlanningError('Please place the entry gate inside the campus before generating the plan.');
@@ -912,7 +952,11 @@ export default function App() {
         canGoToPlan={canGoToPlan}
         user={user}
         onLogout={handleLogout}
-        onGoToDashboard={user?.isGuest ? undefined : () => setCurrentView('dashboard')}
+        onGoToDashboard={user?.isGuest ? undefined : () => {
+          setIsHistoricalView(false);
+          setCurrentView('dashboard');
+        }}
+        isHistoricalView={isHistoricalView}
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);
@@ -977,7 +1021,7 @@ export default function App() {
             binRecommendations={binRecommendations}
             roadBinRecommendations={roadBinRecommendations}
             entryGate={entryGate}
-            onBackToConfigure={() => setCurrentStep(2)}
+            onBackToConfigure={isHistoricalView ? undefined : () => setCurrentStep(2)}
             onRecalculatePrediction={executePlan}
             isHistoricalView={isHistoricalView}
             historicalCreatedAt={historicalCreatedAt}

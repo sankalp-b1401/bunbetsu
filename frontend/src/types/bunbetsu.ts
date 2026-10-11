@@ -655,7 +655,7 @@ export interface PlanDashboardProps {
   sensitivitySeries?: BaselineSensitivityPoint[];
   diagnostics?: CampusPlanDiagnostics | null;
 
-  onBackToConfigure: () => void;
+  onBackToConfigure?: () => void;
   onRecalculatePrediction: () => void;
   onCalculateRoutes?: () => void;
 
