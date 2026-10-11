@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   Clock,
   Users,
@@ -8,10 +8,15 @@ import {
   Plus,
   Loader2,
   AlertCircle,
-} from 'lucide-react';
-import { Campus, CampusLocation, EventDetails, ActivityType } from '../../types/bunbetsu';
-import { ACTIVITIES, ActivityIcon } from '../../constants/activities';
-import { CampusMap } from '../Map/CampusMap';
+} from "lucide-react";
+import {
+  Campus,
+  CampusLocation,
+  EventDetails,
+  ActivityType,
+} from "../../types/bunbetsu";
+import { ACTIVITIES, ActivityIcon } from "../../constants/activities";
+import { CampusMap } from "../Map/CampusMap";
 
 interface EventConfigurationProps {
   campus: Campus;
@@ -19,7 +24,10 @@ interface EventConfigurationProps {
   onUpdateEventDetails: (details: Partial<EventDetails>) => void;
   locations: CampusLocation[];
   selectedLocationId: string | null;
-  onSelectLocation: (locationId: string, fallbackLocation?: CampusLocation) => void;
+  onSelectLocation: (
+    locationId: string,
+    fallbackLocation?: CampusLocation,
+  ) => void;
   onAddCustomLocation: (newLocation: CampusLocation) => void;
   onUpdateLocation: (updatedLocation: CampusLocation) => void;
   onDeleteLocation: (locationId: string) => void;
@@ -44,9 +52,11 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
   isPredicting = false,
   predictionError = null,
 }) => {
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
   const [editingLocId, setEditingLocId] = useState<string | null>(null);
-  const [editingLocName, setEditingLocName] = useState('');
+  const [editingLocName, setEditingLocName] = useState("");
   const [requestAddArea, setRequestAddArea] = useState<{
     name?: string;
     area?: number;
@@ -56,7 +66,10 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
 
   const allActivityKeys = Object.keys(ACTIVITIES) as ActivityType[];
 
-  const handleToggleLocationActivity = (loc: CampusLocation, act: ActivityType) => {
+  const handleToggleLocationActivity = (
+    loc: CampusLocation,
+    act: ActivityType,
+  ) => {
     let newActivities: ActivityType[];
     if (loc.activities.includes(act)) {
       newActivities = loc.activities.filter((a) => a !== act);
@@ -73,16 +86,17 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
     const errors: Record<string, string> = {};
 
     if (!eventDetails.festName.trim()) {
-      errors.festName = 'Event name is required';
+      errors.festName = "Event name is required";
     }
     if (!eventDetails.durationDays || eventDetails.durationDays <= 0) {
-      errors.durationDays = 'Duration must be at least 1 day';
+      errors.durationDays = "Duration must be at least 1 day";
     }
     if (!eventDetails.expectedFootfall || eventDetails.expectedFootfall <= 0) {
-      errors.expectedFootfall = 'Expected footfall must be a positive number';
+      errors.expectedFootfall = "Expected footfall must be a positive number";
     }
     if (locations.length === 0) {
-      errors.locations = 'Please select or add at least one location on the map';
+      errors.locations =
+        "Please select or add at least one location on the map";
     }
 
     for (const loc of locations) {
@@ -109,10 +123,12 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
       <div className="mb-2.5 flex items-baseline justify-between shrink-0">
         <div className="flex items-baseline gap-3">
           <h1 className="font-heading text-xl sm:text-2xl font-bold tracking-tight text-[#202820]">
-            Shape your event space.
+            Bring your event to the map.
           </h1>
           <p className="text-xs sm:text-sm text-[#667267] hidden md:inline font-normal">
-            Configure event details, select campus zones, and assign activity tags to plan waste resources.
+            Configure your event details, areas where activities will take
+            place, and assign activity types to estimate waste and plan
+            resources.
           </p>
         </div>
       </div>
@@ -158,12 +174,16 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                 <input
                   type="text"
                   value={eventDetails.festName}
-                  onChange={(e) => onUpdateEventDetails({ festName: e.target.value })}
+                  onChange={(e) =>
+                    onUpdateEventDetails({ festName: e.target.value })
+                  }
                   placeholder="e.g. Techfest, Spring Fest, Annual Day"
                   className="w-full px-3.5 py-2.5 bg-[#F7F9F5] hover:bg-white focus:bg-white border border-[#E1E8DE] rounded-lg text-[#202820] placeholder:text-[#667267] placeholder:font-normal text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#70D000]/25 focus:border-[#004B20] transition-all"
                 />
                 {validationErrors.festName && (
-                  <p className="text-xs text-[#B42318] font-medium">{validationErrors.festName}</p>
+                  <p className="text-xs text-[#B42318] font-medium">
+                    {validationErrors.festName}
+                  </p>
                 )}
               </div>
 
@@ -180,11 +200,12 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                       type="number"
                       min="1"
                       max="60"
-                      value={eventDetails.durationDays || ''}
+                      value={eventDetails.durationDays || ""}
                       onChange={(e) => {
                         const val = e.target.value;
                         onUpdateEventDetails({
-                          durationDays: val === '' ? 0 : Math.max(0, parseInt(val) || 0),
+                          durationDays:
+                            val === "" ? 0 : Math.max(0, parseInt(val) || 0),
                         });
                       }}
                       placeholder="e.g. 3"
@@ -192,7 +213,9 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     />
                   </div>
                   {validationErrors.durationDays && (
-                    <p className="text-xs text-[#B42318] font-medium">{validationErrors.durationDays}</p>
+                    <p className="text-xs text-[#B42318] font-medium">
+                      {validationErrors.durationDays}
+                    </p>
                   )}
                 </div>
 
@@ -206,11 +229,12 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     <input
                       type="number"
                       min="1"
-                      value={eventDetails.expectedFootfall || ''}
+                      value={eventDetails.expectedFootfall || ""}
                       onChange={(e) => {
                         const val = e.target.value;
                         onUpdateEventDetails({
-                          expectedFootfall: val === '' ? 0 : Math.max(0, parseInt(val) || 0),
+                          expectedFootfall:
+                            val === "" ? 0 : Math.max(0, parseInt(val) || 0),
                         });
                       }}
                       placeholder="e.g. 5000"
@@ -218,7 +242,9 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     />
                   </div>
                   {validationErrors.expectedFootfall && (
-                    <p className="text-xs text-[#B42318] font-medium">{validationErrors.expectedFootfall}</p>
+                    <p className="text-xs text-[#B42318] font-medium">
+                      {validationErrors.expectedFootfall}
+                    </p>
                   )}
                 </div>
               </div>
@@ -250,7 +276,8 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     No event locations selected yet
                   </p>
                   <p className="text-xs text-[#667267] font-medium max-w-[260px] mx-auto leading-relaxed">
-                    Click any campus zone on the map or use the drawing tool to configure locations.
+                    Click any campus zone on the map or use the drawing tool to
+                    configure locations.
                   </p>
                 </div>
               )}
@@ -266,24 +293,32 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                       onClick={() => onSelectLocation(loc.id)}
                       className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
                         isSelected
-                          ? 'border-[#004B20] bg-[#EAF5E6] ring-1 ring-[#004B20]/40 shadow-2xs'
-                          : 'border-[#E1E8DE] hover:border-[#004B20]/30 bg-white shadow-2xs'
+                          ? "border-[#004B20] bg-[#EAF5E6] ring-1 ring-[#004B20]/40 shadow-2xs"
+                          : "border-[#E1E8DE] hover:border-[#004B20]/30 bg-white shadow-2xs"
                       }`}
                     >
                       {/* Top: Name + Rename + Delete */}
                       <div className="flex items-center justify-between gap-2">
                         {editingLocId === loc.id ? (
-                          <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
+                          <div
+                            className="flex items-center gap-1.5 flex-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="text"
                               value={editingLocName}
-                              onChange={(e) => setEditingLocName(e.target.value)}
+                              onChange={(e) =>
+                                setEditingLocName(e.target.value)
+                              }
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
+                                if (e.key === "Enter") {
                                   const trimmed = editingLocName.trim();
-                                  onUpdateLocation({ ...loc, name: trimmed || loc.name });
+                                  onUpdateLocation({
+                                    ...loc,
+                                    name: trimmed || loc.name,
+                                  });
                                   setEditingLocId(null);
-                                } else if (e.key === 'Escape') {
+                                } else if (e.key === "Escape") {
                                   setEditingLocId(null);
                                 }
                               }}
@@ -302,7 +337,10 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
                                 const trimmed = editingLocName.trim();
-                                onUpdateLocation({ ...loc, name: trimmed || loc.name });
+                                onUpdateLocation({
+                                  ...loc,
+                                  name: trimmed || loc.name,
+                                });
                                 setEditingLocId(null);
                               }}
                               className="p-1 text-[#004B20] hover:bg-[#EAF5E6] rounded-md cursor-pointer"
@@ -365,14 +403,25 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                               }}
                               className={`w-7 h-7 rounded-md flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                                 isTagged
-                                  ? 'text-white shadow-2xs ring-1 ring-black/10'
-                                  : 'bg-[#F7F9F5] text-[#667267] hover:bg-[#EAF5E6] hover:text-[#004B20] border border-[#E1E8DE]'
+                                  ? "text-white shadow-2xs ring-1 ring-black/10"
+                                  : "bg-[#F7F9F5] text-[#667267] hover:bg-[#EAF5E6] hover:text-[#004B20] border border-[#E1E8DE]"
                               }`}
-                              style={isTagged ? { backgroundColor: meta.color } : undefined}
-                              title={isTagged ? `${act} (Assigned — click to remove)` : `${act} (Click to assign)`}
+                              style={
+                                isTagged
+                                  ? { backgroundColor: meta.color }
+                                  : undefined
+                              }
+                              title={
+                                isTagged
+                                  ? `${act} (Assigned — click to remove)`
+                                  : `${act} (Click to assign)`
+                              }
                               aria-label={act}
                             >
-                              <ActivityIcon type={act} className="w-3.5 h-3.5 shrink-0" />
+                              <ActivityIcon
+                                type={act}
+                                className="w-3.5 h-3.5 shrink-0"
+                              />
                             </button>
                           );
                         })}

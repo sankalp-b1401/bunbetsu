@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from "react";
 import {
   Search,
   ArrowRight,
@@ -9,10 +9,10 @@ import {
   Compass,
   Loader2,
   XCircle,
-} from 'lucide-react';
-import { Campus } from '../../types/bunbetsu';
-import { fetchCampusByCollege } from '../../services/campusApi';
-import { CampusMap } from '../Map/CampusMap';
+} from "lucide-react";
+import { Campus } from "../../types/bunbetsu";
+import { fetchCampusByCollege } from "../../services/campusApi";
+import { CampusMap } from "../Map/CampusMap";
 
 interface CampusFinderProps {
   selectedCampus: Campus | null;
@@ -25,11 +25,15 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
   onSelectCampus,
   onConfirmCampus,
 }) => {
-  const [searchQuery, setSearchQuery] = useState(selectedCampus ? selectedCampus.name : '');
+  const [searchQuery, setSearchQuery] = useState(
+    selectedCampus ? selectedCampus.name : "",
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recenterCount, setRecenterCount] = useState<number>(0);
-  const [hasSearched, setHasSearched] = useState<boolean>(Boolean(selectedCampus));
+  const [hasSearched, setHasSearched] = useState<boolean>(
+    Boolean(selectedCampus),
+  );
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -38,7 +42,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
     if (isLoading) return;
     const trimmed = query.trim();
     if (!trimmed) {
-      setErrorMessage('Please enter a college or university name to search.');
+      setErrorMessage("Please enter a college or university name to search.");
       return;
     }
 
@@ -52,7 +56,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
       setHasSearched(true);
       setRecenterCount((prev) => prev + 1);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to retrieve campus data.');
+      setErrorMessage(err.message || "Failed to retrieve campus data.");
     } finally {
       setIsLoading(false);
     }
@@ -104,7 +108,8 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
               Start with your campus.
             </h1>
             <p className="text-xs text-[#667267] font-normal leading-relaxed">
-              Find and map your event venue to retrieve real boundaries from OpenStreetMap.
+              Find your college or university to map its campus boundaries and
+              prepare the space for event waste planning.
             </p>
           </div>
 
@@ -128,7 +133,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
                   if (errorMessage) setErrorMessage(null);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     e.preventDefault();
                     handleSearchSubmit();
                   }
@@ -160,8 +165,10 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
 
           {/* Quick Popular Suggestions Chips */}
           <div className="flex items-center gap-1.5 text-xs text-[#667267] flex-wrap pt-0.5">
-            <span className="font-semibold text-[#202820] text-[11px]">Popular:</span>
-            {['MNNIT Allahabad', 'NIT Trichy', 'IIT Delhi', 'IIT Bombay'].map(
+            <span className="font-semibold text-[#202820] text-[11px]">
+              Popular:
+            </span>
+            {["MNNIT Allahabad", "NIT Trichy", "IIT Delhi", "IIT Bombay"].map(
               (suggested) => (
                 <button
                   key={suggested}
@@ -170,13 +177,13 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
                   onClick={() => handleSelectSuggested(suggested)}
                   className={`px-2.5 py-0.5 rounded-md text-[11px] font-medium transition-all cursor-pointer disabled:opacity-50 ${
                     selectedCampus?.name === suggested
-                      ? 'bg-[#004B20] font-bold text-white shadow-xs'
-                      : 'bg-[#F7F9F5] hover:bg-[#EAF5E6] border border-[#E1E8DE] text-[#202820]'
+                      ? "bg-[#004B20] font-bold text-white shadow-xs"
+                      : "bg-[#F7F9F5] hover:bg-[#EAF5E6] border border-[#E1E8DE] text-[#202820]"
                   }`}
                 >
                   {suggested}
                 </button>
-              )
+              ),
             )}
           </div>
         </div>
@@ -186,8 +193,12 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
           <div className="relative z-20 pointer-events-auto bg-red-50/95 backdrop-blur-md rounded-xl p-4 border border-red-200 shadow-lg text-xs text-red-900 flex items-start gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
             <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <div className="font-bold font-heading text-red-950">Campus Search Error</div>
-              <p className="mt-0.5 text-red-800 leading-relaxed font-medium">{errorMessage}</p>
+              <div className="font-bold font-heading text-red-950">
+                Campus Search Error
+              </div>
+              <p className="mt-0.5 text-red-800 leading-relaxed font-medium">
+                {errorMessage}
+              </p>
             </div>
           </div>
         )}
@@ -197,7 +208,9 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
           <div className="relative z-20 pointer-events-auto bg-white/95 backdrop-blur-md rounded-xl p-5 border border-[#E1E8DE] shadow-lg text-xs text-[#202820] flex items-center gap-3 animate-in fade-in duration-200">
             <Loader2 className="w-5 h-5 text-[#004B20] animate-spin shrink-0" />
             <div>
-              <div className="font-bold font-heading text-[#202820]">Querying OpenStreetMap...</div>
+              <div className="font-bold font-heading text-[#202820]">
+                Querying OpenStreetMap...
+              </div>
               <div className="text-[11px] text-[#667267]">
                 Retrieving educational boundaries and campus geography
               </div>
@@ -214,7 +227,7 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
                 <img
                   src={
                     selectedCampus.imageUrl ||
-                    'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=600&q=80'
+                    "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=600&q=80"
                   }
                   alt={selectedCampus.name}
                   className="w-full h-full object-cover"
@@ -256,7 +269,9 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
               <div className="p-2.5 bg-amber-50/80 rounded-lg border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                 <p className="leading-snug">
-                  Nominatim returned coordinates for this location, but no polygon boundary is mapped in OpenStreetMap. You can still navigate the campus map and define event locations.
+                  Nominatim returned coordinates for this location, but no
+                  polygon boundary is mapped in OpenStreetMap. You can still
+                  navigate the campus map and define event locations.
                 </p>
               </div>
             )}
@@ -264,11 +279,14 @@ export const CampusFinder: React.FC<CampusFinderProps> = ({
             {/* Metadata Row */}
             <div className="grid grid-cols-2 gap-2 p-2 bg-[#F7F9F5] rounded-lg border border-[#E1E8DE] text-[11px]">
               <div className="flex items-center gap-1.5 truncate">
-                <span className="text-[#667267] font-medium">Area (approx.):</span>
+                <span className="text-[#667267] font-medium">
+                  Area (approx.):
+                </span>
                 <span className="font-bold text-[#202820] truncate">
-                  {selectedCampus.hasBoundary && selectedCampus.approxAreaHectares > 0
+                  {selectedCampus.hasBoundary &&
+                  selectedCampus.approxAreaHectares > 0
                     ? `${selectedCampus.approxAreaHectares} hectares`
-                    : 'Point coordinates'}
+                    : "Point coordinates"}
                 </span>
               </div>
               <div className="flex items-center gap-1.5 justify-end text-[#667267] truncate">
