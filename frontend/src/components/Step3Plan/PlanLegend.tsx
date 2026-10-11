@@ -112,7 +112,7 @@ export const PlanLegend: React.FC<PlanLegendProps> = ({
         )}
       </div>
 
-      {/* Recommended Bins Legend (Recyclable & Disposable & Road Stations) */}
+      {/* Recommended Bins Legend (Disposable & Recyclable) */}
       <div className="space-y-1.5 text-xs">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded bg-[#2563EB] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
@@ -129,15 +129,6 @@ export const PlanLegend: React.FC<PlanLegendProps> = ({
           </div>
           <span className="text-[11px] font-medium text-[#202820]">
             Recyclable bin (100L)
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 rounded-full bg-[#D97706] ring-1.5 ring-amber-300 text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs font-bold">
-            🚏
-          </div>
-          <span className="text-[11px] font-medium text-[#202820]">
-            Road bin station (dual stream)
           </span>
         </div>
       </div>

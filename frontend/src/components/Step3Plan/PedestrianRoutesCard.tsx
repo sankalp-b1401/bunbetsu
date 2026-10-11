@@ -73,7 +73,7 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
       : '—';
 
   return (
-    <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-y-auto">
+    <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col h-full overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between pb-1.5 border-b border-[#E1E8DE]">
         <div className="flex items-center gap-1.5">
@@ -91,8 +91,8 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
         )}
       </div>
 
-      {/* Main Content Area: Evenly distributed sections */}
-      <div className="flex-1 flex flex-col justify-between pt-2">
+      {/* Main Content Area: Compact and evenly spaced sections */}
+      <div className="space-y-2.5 pt-2">
         {/* Importance Color Ramp */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] font-bold text-[#667267]">
@@ -137,15 +137,6 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
               {connectedPairsFormatted}
             </span>
           </div>
-          {typeof scoring?.total_paths_evaluated === 'number' && scoring.total_paths_evaluated > 0 && (
-            <div className="col-span-2 pt-1 border-t border-dashed border-[#E1E8DE] flex items-center justify-between text-[9px] text-[#667267]">
-              <span>Alternative routes:</span>
-              <span className="font-semibold text-[#202820]">
-                {scoring.total_paths_evaluated} paths ({scoring.pairs_with_multiple_paths ?? 0} multi-path)
-                {scoring.pairs_reaching_path_limit ? ` · limit reached (${scoring.pairs_reaching_path_limit})` : ''}
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>
