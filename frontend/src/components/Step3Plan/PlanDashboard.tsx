@@ -47,7 +47,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   const [showActivityIcons, setShowActivityIcons] = useState<boolean>(true);
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('total');
   const [heatmapCategory, setHeatmapCategory] = useState<WasteCategory>('Food');
-  const [showBins, setShowBins] = useState<boolean>(false);
+  const [showBins, setShowBins] = useState<boolean>(true);
   const [showRoutes, setShowRoutes] = useState<boolean>(true);
 
   // Selected features on map
