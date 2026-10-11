@@ -673,9 +673,30 @@ export interface DashboardEventItem {
   name: string;
 }
 
+export interface SavedTemplateData {
+  schema_version: number;
+  campus: Campus;
+  allCampusLocations: CampusLocation[];
+  locations: CampusLocation[];
+  eventDetails: EventDetails;
+  entryGate: EntryGate | null;
+}
+
+export interface SavedTemplateRecord {
+  id: string;
+  user_id: string;
+  name: string;
+  template_data: SavedTemplateData;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardTemplateItem {
   id: string;
   name: string;
+  created_at?: string;
+  updated_at?: string;
+  template_data?: SavedTemplateData;
 }
 
 export function getUserInitials(name: string): string {

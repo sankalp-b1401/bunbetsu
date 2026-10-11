@@ -4,7 +4,8 @@
  * Integrates waste prediction, polygon-constrained bin distribution, and pedestrian routing.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { CampusFinder } from './components/Step1CampusFinder/CampusFinder';
 import { EventConfiguration } from './components/Step2EventConfiguration/EventConfiguration';
@@ -20,6 +21,8 @@ import {
   RoadBinRecommendationResult,
   EntryGate,
   AuthUser,
+  DashboardTemplateItem,
+  SavedTemplateData,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
@@ -29,12 +32,26 @@ import {
   isSupabaseConfigured,
   buildAuthUserFromSession,
 } from './lib/supabase';
+import {
+  saveTemplate,
+  listSavedTemplates,
+  deleteSavedTemplate,
+  validateTemplateData,
+} from './services/templateApi';
+import { SaveTemplateModal } from './components/Step2EventConfiguration/SaveTemplateModal';
 
 export default function App() {
   // Top-level navigation: 'auth' | 'dashboard' | 'planner'
   const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'planner'>('auth');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
+
+  // Saved templates state
+  const [savedTemplates, setSavedTemplates] = useState<DashboardTemplateItem[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState<boolean>(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -494,6 +511,133 @@ export default function App() {
     setCurrentView('planner');
   };
 
+  // Re-fetch saved templates from Supabase
+  const refreshTemplates = useCallback(async () => {
+    if (!user || user.isGuest || !isSupabaseConfigured) {
+      setSavedTemplates([]);
+      return;
+    }
+    setIsLoadingTemplates(true);
+    setTemplatesError(null);
+    try {
+      const templates = await listSavedTemplates();
+      setSavedTemplates(templates);
+    } catch (err: any) {
+      console.warn('[Bunbetsu] Failed to query saved templates:', err);
+      setTemplatesError(err?.message || 'Failed to retrieve saved templates.');
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  }, [user]);
+
+  // Load templates on user change or login
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      refreshTemplates();
+    } else {
+      setSavedTemplates([]);
+    }
+  }, [user, refreshTemplates]);
+
+  // Handle saving current configuration as a reusable template
+  const handleSaveTemplate = async (templateName: string) => {
+    if (!selectedCampus) {
+      throw new Error('Please select a campus before saving a template.');
+    }
+
+    const snapshot: SavedTemplateData = {
+      schema_version: 1,
+      campus: selectedCampus,
+      allCampusLocations: allCampusLocations,
+      locations: locations,
+      eventDetails: eventDetails,
+      entryGate: entryGate,
+    };
+
+    await saveTemplate({
+      name: templateName,
+      templateData: snapshot,
+    });
+
+    await refreshTemplates();
+
+    setToastMessage(`Template "${templateName}" saved successfully.`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Handle restoring a saved template into the planner
+  const handleSelectTemplate = (templateItem: DashboardTemplateItem) => {
+    if (!templateItem.template_data) {
+      setToastMessage(`Template "${templateItem.name}" has no configuration data.`);
+      setTimeout(() => setToastMessage(null), 4000);
+      return;
+    }
+
+    const validation = validateTemplateData(templateItem.template_data);
+    if (!validation.valid || !validation.data) {
+      setToastMessage(`Failed to restore template: ${validation.error || 'Invalid configuration.'}`);
+      setTimeout(() => setToastMessage(null), 5000);
+      return;
+    }
+
+    const data = validation.data;
+
+    // 1. Restore campus and complete pool
+    setSelectedCampus(data.campus);
+    setAllCampusLocations(
+      data.allCampusLocations && data.allCampusLocations.length > 0
+        ? data.allCampusLocations
+        : data.campus.defaultLocations || data.locations
+    );
+
+    // 2. Restore active event locations
+    setLocations(data.locations || []);
+
+    // 3. Restore event details
+    setEventDetails({
+      festName: data.eventDetails.festName || '',
+      durationDays: data.eventDetails.durationDays || 1,
+      expectedFootfall: data.eventDetails.expectedFootfall || 0,
+      startDate: data.eventDetails.startDate,
+      endDate: data.eventDetails.endDate,
+    });
+
+    // 4. Restore entry gate
+    setEntryGate(data.entryGate || null);
+
+    // 5. Clear stale derived calculation results
+    setSelectedLocationId(null);
+    setPredictionResult(null);
+    setBinRecommendations(null);
+    setRoadBinRecommendations(null);
+    setRouteResult(null);
+    setPlanningError(null);
+    setRoutesError(null);
+    setIsPlanStale(false);
+
+    // 6. Navigate to Step 2: Event Configuration in Planner
+    setStep1Completed(true);
+    setCurrentStep(2);
+    setCurrentView('planner');
+
+    setToastMessage(`Template "${templateItem.name}" restored.`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Handle deleting a template
+  const handleDeleteTemplate = async (templateId: string) => {
+    try {
+      await deleteSavedTemplate(templateId);
+      setSavedTemplates((prev) => prev.filter((t) => t.id !== templateId));
+      setToastMessage('Template deleted.');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err: any) {
+      console.error('[Bunbetsu] Failed to delete template:', err);
+      setToastMessage(`Could not delete template: ${err?.message || 'Unknown error'}`);
+      setTimeout(() => setToastMessage(null), 4000);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       if (!user?.isGuest && isSupabaseConfigured) {
@@ -503,6 +647,7 @@ export default function App() {
       console.warn('[Bunbetsu Auth] Logout error:', err);
     } finally {
       setUser(null);
+      setSavedTemplates([]);
       setCurrentView('auth');
       setCurrentStep(1);
       setSelectedCampus(null);
@@ -554,13 +699,25 @@ export default function App() {
         onStartPlanning={handleStartPlanning}
         onLogout={handleLogout}
         recentEvents={[]}
-        savedTemplates={[]}
+        savedTemplates={savedTemplates}
+        onSelectTemplate={handleSelectTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
+        isLoadingTemplates={isLoadingTemplates}
+        templatesError={templatesError}
       />
     );
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans">
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans relative">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-[#0D3820] text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-4 h-4 text-[#70D000] shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Top Persistent Navbar with Step Indicator */}
       <Navbar
         currentStep={currentStep}
@@ -610,6 +767,7 @@ export default function App() {
             predictionError={planningError}
             entryGate={entryGate}
             onSetEntryGate={handleSetEntryGate}
+            onSaveTemplate={() => setShowSaveTemplateModal(true)}
           />
         )}
 
@@ -634,6 +792,20 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Save Template Modal */}
+      {showSaveTemplateModal && selectedCampus && (
+        <SaveTemplateModal
+          isOpen={showSaveTemplateModal}
+          onClose={() => setShowSaveTemplateModal(false)}
+          onSave={handleSaveTemplate}
+          campus={selectedCampus}
+          locations={locations}
+          eventDetails={eventDetails}
+          entryGate={entryGate}
+          isGuest={Boolean(user?.isGuest)}
+        />
+      )}
     </div>
   );
 }

@@ -6,6 +6,8 @@ interface SavedTemplatesPanelProps {
   onViewAll: () => void;
   onStartPlanning: () => void;
   onSelectTemplate?: (template: DashboardTemplateItem) => void;
+  isLoading?: boolean;
+  error?: string | null;
   maxVisible?: number;
 }
 
@@ -14,6 +16,8 @@ export const SavedTemplatesPanel: React.FC<SavedTemplatesPanelProps> = ({
   onViewAll,
   onStartPlanning,
   onSelectTemplate,
+  isLoading = false,
+  error = null,
   maxVisible = 6,
 }) => {
   const visibleTemplates = templates.slice(0, maxVisible);
@@ -40,9 +44,24 @@ export const SavedTemplatesPanel: React.FC<SavedTemplatesPanelProps> = ({
           </button>
         </div>
 
-        {/* Templates List (5-10 max fitting without scroll) or Empty State */}
+        {/* Templates List (5-10 max fitting without scroll), Loading, Error, or Empty State */}
         <div className="mt-1.5 overflow-hidden">
-          {visibleTemplates.length === 0 ? (
+          {isLoading ? (
+            <div className="py-7 sm:py-9 text-center">
+              <p className="text-xs text-[#667267] font-medium leading-relaxed">
+                Loading templates...
+              </p>
+            </div>
+          ) : error ? (
+            <div className="py-7 sm:py-9 text-center space-y-1">
+              <p className="text-xs text-red-600 font-medium leading-relaxed">
+                {error}
+              </p>
+              <p className="text-[11px] text-[#88988C]">
+                Could not retrieve your saved templates.
+              </p>
+            </div>
+          ) : visibleTemplates.length === 0 ? (
             <div className="py-7 sm:py-9 text-center space-y-2">
               <p className="text-xs text-[#667267] font-medium leading-relaxed">
                 No templates available yet.
@@ -64,10 +83,13 @@ export const SavedTemplatesPanel: React.FC<SavedTemplatesPanelProps> = ({
                 <div
                   key={tmpl.id}
                   onClick={() => onSelectTemplate?.(tmpl)}
-                  className="py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer truncate"
+                  className="py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer truncate flex items-center justify-between"
                   title={tmpl.name}
                 >
-                  {tmpl.name}
+                  <span className="truncate">{tmpl.name}</span>
+                  <span className="text-[11px] text-[#667267] font-normal shrink-0 ml-2">
+                    Use →
+                  </span>
                 </div>
               ))}
             </div>

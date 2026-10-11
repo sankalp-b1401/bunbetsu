@@ -20,6 +20,9 @@ interface DashboardPageProps {
   savedTemplates?: DashboardTemplateItem[];
   onSelectEvent?: (event: DashboardEventItem) => void;
   onSelectTemplate?: (template: DashboardTemplateItem) => void;
+  onDeleteTemplate?: (templateId: string) => void;
+  isLoadingTemplates?: boolean;
+  templatesError?: string | null;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -30,6 +33,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   savedTemplates = [],
   onSelectEvent,
   onSelectTemplate,
+  onDeleteTemplate,
+  isLoadingTemplates = false,
+  templatesError = null,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardViewTab>('dashboard');
 
@@ -86,6 +92,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 onViewAll={() => setActiveTab('templates')}
                 onStartPlanning={onStartPlanning}
                 onSelectTemplate={onSelectTemplate}
+                isLoading={isLoadingTemplates}
+                error={templatesError}
               />
             </div>
           </div>
@@ -172,7 +180,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
 
             <div className="bg-white rounded-2xl border border-[#E1E8DE] p-5 sm:p-6 shadow-2xs">
-              {savedTemplates.length === 0 ? (
+              {isLoadingTemplates ? (
+                <div className="py-14 text-center">
+                  <p className="text-sm font-semibold text-[#183E28]">
+                    Loading your saved templates...
+                  </p>
+                </div>
+              ) : templatesError ? (
+                <div className="py-14 text-center space-y-2">
+                  <p className="text-sm font-semibold text-red-600">
+                    {templatesError}
+                  </p>
+                  <p className="text-xs text-[#667267]">
+                    Unable to retrieve saved templates from database.
+                  </p>
+                </div>
+              ) : savedTemplates.length === 0 ? (
                 <div className="py-14 text-center space-y-3">
                   <p className="text-sm font-semibold text-[#183E28]">
                     No custom templates saved yet.
@@ -196,11 +219,41 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   {savedTemplates.map((tmpl) => (
                     <div
                       key={tmpl.id}
-                      onClick={() => onSelectTemplate?.(tmpl)}
-                      className="py-3 px-3 rounded-lg text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer flex items-center justify-between"
+                      className="py-3 px-3 rounded-lg text-sm font-semibold text-[#1F2937] hover:bg-[#F9FAF7] transition flex items-center justify-between"
                     >
-                      <span>{tmpl.name}</span>
-                      <span className="text-xs text-[#667267]">Use template →</span>
+                      <div
+                        onClick={() => onSelectTemplate?.(tmpl)}
+                        className="cursor-pointer hover:text-[#0B4222] flex-1 truncate"
+                        title={tmpl.name}
+                      >
+                        <span>{tmpl.name}</span>
+                        {tmpl.updated_at && (
+                          <span className="text-xs text-[#8A9C8F] font-normal ml-2">
+                            • Updated {new Date(tmpl.updated_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {onDeleteTemplate && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteTemplate(tmpl.id);
+                            }}
+                            className="text-xs text-red-600 hover:text-red-800 font-semibold px-2 py-1 hover:bg-red-50 rounded transition cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onSelectTemplate?.(tmpl)}
+                          className="text-xs text-[#0B4222] font-bold hover:underline cursor-pointer"
+                        >
+                          Use template →
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

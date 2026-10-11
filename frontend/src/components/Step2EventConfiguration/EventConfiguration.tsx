@@ -8,6 +8,7 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  Bookmark,
 } from "lucide-react";
 import {
   Campus,
@@ -38,6 +39,7 @@ interface EventConfigurationProps {
   predictionError?: string | null;
   entryGate?: EntryGate | null;
   onSetEntryGate?: (gate: EntryGate) => void;
+  onSaveTemplate?: () => void;
 }
 
 export const EventConfiguration: React.FC<EventConfigurationProps> = ({
@@ -56,6 +58,7 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
   predictionError = null,
   entryGate = null,
   onSetEntryGate,
+  onSaveTemplate,
 }) => {
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
@@ -140,6 +143,17 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
             resources.
           </p>
         </div>
+        {onSaveTemplate && (
+          <button
+            type="button"
+            onClick={onSaveTemplate}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D5E1D4] bg-white hover:bg-[#F4F7F4] text-[#004B20] text-xs font-bold shadow-2xs transition cursor-pointer shrink-0"
+            title="Save current configuration as a reusable template"
+          >
+            <Bookmark className="w-3.5 h-3.5 text-[#004B20]" />
+            <span>Save as template</span>
+          </button>
+        )}
       </div>
 
       {/* Main Grid: Left Map + Right Configuration Panel */}
