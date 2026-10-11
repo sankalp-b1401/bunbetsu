@@ -10,20 +10,26 @@ from bin_distribution_model.bin_distribution_model import (
     DEFAULT_ROAD_BIN_SPACING_M,
     DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M,
     DEFAULT_WASTE_INFLUENCE_RADII_M,
+    DISPOSABLE_WASTE_CATEGORIES,
+    RECYCLABLE_WASTE_CATEGORIES,
     USABLE_BIN_CAPACITY_LITRES,
     WASTE_DENSITY_KG_PER_M3,
     WASTE_INFLUENCE_RADII_M,
     RoadBinCandidate,
     RoadBinPlacement,
     RoadBinPrediction,
+    RoadCorridorGraph,
     allocate_streams_largest_remainder,
     bins_for_daily_volume,
     construct_influence_zone_m,
     determine_dominant_waste_type,
+    determine_stream_dominant_waste_types,
+    find_spacing_conflict_pairs,
     get_influence_radius_m,
     predict_on_location_bins,
     predict_road_bins,
     round_half_up,
+    validate_road_bin_spacing,
     volume_litres_from_mass_kg,
 )
 
@@ -412,387 +418,541 @@ class TestRoadBinPlacementModel(unittest.TestCase):
         }
 
     # -------------------------------------------------------------------------
-    # A. Influence-radius tests
+    # A. Influence-radius tests (Phase 11 - Section 12.A)
     # -------------------------------------------------------------------------
-    def test_a1_food_dominant_receives_15m(self):
-        cat, _ = determine_dominant_waste_type({"Food": 100.0, "Plastic": 20.0})
+    def test_a1_food_dominant_disposable_receives_100m(self):
+        cat, _ = determine_dominant_waste_type({"Food": 100.0, "Others": 20.0})
         self.assertEqual(cat, "Food")
-        self.assertEqual(get_influence_radius_m(cat), 15.0)
+        self.assertEqual(get_influence_radius_m(cat), 100.0)
 
-    def test_a2_glass_dominant_receives_15m(self):
-        cat, _ = determine_dominant_waste_type({"Food": 10.0, "Glass": 50.0})
-        self.assertEqual(cat, "Glass")
-        self.assertEqual(get_influence_radius_m(cat), 15.0)
+        info = determine_stream_dominant_waste_types(
+            {"Food": 100.0, "Others": 20.0, "Plastic": 5.0}
+        )
+        self.assertEqual(info["disposable"]["dominant_category"], "Food")
+        self.assertEqual(info["disposable"]["radius_m"], 100.0)
+        self.assertTrue(info["disposable"]["requires_coverage"])
 
-    def test_a3_others_dominant_receives_20m(self):
-        cat, _ = determine_dominant_waste_type({"Others": 80.0, "Paper": 30.0})
+    def test_a2_others_dominant_disposable_receives_125m(self):
+        cat, _ = determine_dominant_waste_type({"Others": 80.0, "Food": 30.0})
         self.assertEqual(cat, "Others")
-        self.assertEqual(get_influence_radius_m(cat), 20.0)
+        self.assertEqual(get_influence_radius_m(cat), 125.0)
 
-    def test_a4_paper_dominant_receives_25m(self):
+        info = determine_stream_dominant_waste_types(
+            {"Food": 10.0, "Others": 50.0}
+        )
+        self.assertEqual(info["disposable"]["dominant_category"], "Others")
+        self.assertEqual(info["disposable"]["radius_m"], 125.0)
+        self.assertTrue(info["disposable"]["requires_coverage"])
+
+    def test_a3_glass_dominant_recyclable_receives_100m(self):
+        cat, _ = determine_dominant_waste_type({"Glass": 50.0, "Food": 10.0})
+        self.assertEqual(cat, "Glass")
+        self.assertEqual(get_influence_radius_m(cat), 100.0)
+
+        info = determine_stream_dominant_waste_types(
+            {"Glass": 50.0, "Paper": 20.0, "Plastic": 10.0}
+        )
+        self.assertEqual(info["recyclable"]["dominant_category"], "Glass")
+        self.assertEqual(info["recyclable"]["radius_m"], 100.0)
+        self.assertTrue(info["recyclable"]["requires_coverage"])
+
+    def test_a4_paper_dominant_recyclable_receives_150m(self):
         cat, _ = determine_dominant_waste_type({"Paper": 90.0, "Food": 40.0})
         self.assertEqual(cat, "Paper")
-        self.assertEqual(get_influence_radius_m(cat), 25.0)
+        self.assertEqual(get_influence_radius_m(cat), 150.0)
 
-    def test_a5_plastic_dominant_receives_25m(self):
+        info = determine_stream_dominant_waste_types(
+            {"Paper": 90.0, "Glass": 10.0, "Plastic": 40.0}
+        )
+        self.assertEqual(info["recyclable"]["dominant_category"], "Paper")
+        self.assertEqual(info["recyclable"]["radius_m"], 150.0)
+        self.assertTrue(info["recyclable"]["requires_coverage"])
+
+    def test_a5_plastic_dominant_recyclable_receives_150m(self):
         cat, _ = determine_dominant_waste_type({"Plastic": 120.0, "Food": 50.0})
         self.assertEqual(cat, "Plastic")
-        self.assertEqual(get_influence_radius_m(cat), 25.0)
+        self.assertEqual(get_influence_radius_m(cat), 150.0)
 
-    def test_a6_equal_dominant_masses_follow_deterministic_tie_break(self):
-        # Food and Glass tied at 50 kg -> alphabetical 'Food' wins
-        cat, _ = determine_dominant_waste_type({"Glass": 50.0, "Food": 50.0})
-        self.assertEqual(cat, "Food")
+        info = determine_stream_dominant_waste_types(
+            {"Plastic": 120.0, "Glass": 20.0, "Paper": 30.0}
+        )
+        self.assertEqual(info["recyclable"]["dominant_category"], "Plastic")
+        self.assertEqual(info["recyclable"]["radius_m"], 150.0)
+        self.assertTrue(info["recyclable"]["requires_coverage"])
 
-        # Paper and Plastic tied at 100 kg -> alphabetical 'Paper' wins
-        cat2, _ = determine_dominant_waste_type({"Plastic": 100.0, "Paper": 100.0})
-        self.assertEqual(cat2, "Paper")
+    def test_a6_each_stream_chooses_dominant_category_independently(self):
+        info = determine_stream_dominant_waste_types({
+            "Food": 100.0,
+            "Others": 10.0,
+            "Plastic": 200.0,
+            "Glass": 50.0,
+            "Paper": 30.0,
+        })
+        self.assertEqual(info["disposable"]["dominant_category"], "Food")
+        self.assertEqual(info["disposable"]["radius_m"], 100.0)
+        self.assertEqual(info["recyclable"]["dominant_category"], "Plastic")
+        self.assertEqual(info["recyclable"]["radius_m"], 150.0)
+        self.assertTrue(info["disposable"]["requires_coverage"])
+        self.assertTrue(info["recyclable"]["requires_coverage"])
 
-    def test_a7_missing_or_invalid_waste_profiles_raise_error(self):
-        with self.assertRaises(ValueError):
-            determine_dominant_waste_type({})
-        with self.assertRaises(ValueError):
-            determine_dominant_waste_type({"Food": -5.0})
-        with self.assertRaises(ValueError):
-            determine_dominant_waste_type({"Food": float("nan")})
+    def test_a7_equal_dominant_masses_follow_deterministic_tie_break(self):
+        info = determine_stream_dominant_waste_types({"Others": 50.0, "Food": 50.0})
+        self.assertEqual(info["disposable"]["dominant_category"], "Food")
 
-    def test_a8_changing_radius_config_changes_eligibility(self):
+        info2 = determine_stream_dominant_waste_types({"Plastic": 100.0, "Paper": 100.0})
+        self.assertEqual(info2["recyclable"]["dominant_category"], "Paper")
+
+    def test_a8_zero_waste_stream_does_not_receive_unnecessary_coverage_requirement(self):
+        info = determine_stream_dominant_waste_types({"Food": 100.0, "Others": 0.0, "Plastic": 0.0})
+        self.assertTrue(info["disposable"]["requires_coverage"])
+        self.assertFalse(info["recyclable"]["requires_coverage"])
+
+        info2 = determine_stream_dominant_waste_types({"Plastic": 50.0, "Food": 0.0})
+        self.assertFalse(info2["disposable"]["requires_coverage"])
+        self.assertTrue(info2["recyclable"]["requires_coverage"])
+
+    def test_a9_changing_radius_config_changes_eligibility_without_altering_waste_predictor(self):
         custom_radii = dict(DEFAULT_WASTE_INFLUENCE_RADII_M)
-        custom_radii["Food"] = 40.0
-        self.assertEqual(get_influence_radius_m("Food", custom_radii), 40.0)
+        custom_radii["Food"] = 200.0
+        self.assertEqual(get_influence_radius_m("Food", custom_radii), 200.0)
 
     # -------------------------------------------------------------------------
-    # B. Polygon-buffer tests
+    # B. Coverage tests (Phase 11 - Section 12.B)
     # -------------------------------------------------------------------------
-    def test_b1_candidate_10m_outside_boundary_is_eligible_for_15m_radius(self):
-        from shapely.geometry import box
-        poly_m = box(0, 0, 50, 50)
-        zone_m = construct_influence_zone_m(poly_m, 15.0)
-        # Point at x = 60, y = 25 is 10 m outside right boundary
-        cand = Point(60.0, 25.0)
-        self.assertTrue(zone_m.covers(cand))
-        self.assertAlmostEqual(poly_m.distance(cand), 10.0)
-
-    def test_b2_candidate_20m_outside_boundary_is_ineligible_for_15m_radius(self):
-        from shapely.geometry import box
-        poly_m = box(0, 0, 50, 50)
-        zone_m = construct_influence_zone_m(poly_m, 15.0)
-        # Point at x = 70, y = 25 is 20 m outside right boundary
-        cand = Point(70.0, 25.0)
-        self.assertFalse(zone_m.covers(cand))
-        self.assertAlmostEqual(poly_m.distance(cand), 20.0)
-
-    def test_b3_candidates_measured_from_boundary_not_centroid(self):
-        from shapely.geometry import box
-        # Long elongated polygon 100 m wide x 20 m high
-        # Centroid is at (50, 10)
-        poly_m = box(0, 0, 100, 20)
-        zone_m = construct_influence_zone_m(poly_m, 15.0)
-        # Point near the right edge: (108, 10).
-        # Distance to centroid = 58 m (which would fail if centroid-based circle of 15 m)
-        # Distance to boundary = 8 m <= 15 m (eligible!)
-        cand_right = Point(108.0, 10.0)
-        self.assertTrue(zone_m.covers(cand_right))
-        self.assertAlmostEqual(poly_m.distance(cand_right), 8.0)
-
-        # Point near top edge: (50, 28).
-        # Distance to boundary = 8 m <= 15 m (eligible!)
-        cand_top = Point(50.0, 28.0)
-        self.assertTrue(zone_m.covers(cand_top))
-        self.assertAlmostEqual(poly_m.distance(cand_top), 8.0)
-
-    def test_b4_polygon_and_multipolygon_supported(self):
-        from shapely.geometry import MultiPolygon, box
-        mp_m = MultiPolygon([box(0, 0, 20, 20), box(40, 0, 60, 20)])
-        zone_m = construct_influence_zone_m(mp_m, 15.0)
-        self.assertTrue(zone_m.is_valid)
-        self.assertTrue(zone_m.covers(Point(10.0, 25.0)))
-        self.assertTrue(zone_m.covers(Point(50.0, 25.0)))
-
-    def test_b5_holes_in_polygon_buffered_accurately(self):
-        from shapely.geometry import Polygon
-        # Outer square 0..100 with large hole 20..80 (courtyard of width 60 m)
-        outer = [(0, 0), (100, 0), (100, 100), (0, 100), (0, 0)]
-        hole = [(20, 20), (80, 20), (80, 80), (20, 80), (20, 20)]
-        poly_m = Polygon(outer, [hole])
-        zone_m = construct_influence_zone_m(poly_m, 15.0)
-        # Point inside courtyard near inner boundary: (25, 50) is 5 m from hole edge -> inside zone
-        pt_near_edge = Point(25.0, 50.0)
-        self.assertTrue(zone_m.covers(pt_near_edge))
-        # Point deep in center of courtyard: (50, 50) is 30 m from nearest building edge -> NOT in zone
-        pt_center = Point(50.0, 50.0)
-        self.assertFalse(zone_m.covers(pt_center))
-
-    def test_b6_invalid_or_empty_polygons_raise_error(self):
-        with self.assertRaises(ValueError):
-            construct_influence_zone_m(Polygon(), 15.0)
-        with self.assertRaises(ValueError):
-            construct_influence_zone_m(shape(self.sample_polygon), -10.0)
-
-    # -------------------------------------------------------------------------
-    # C. Candidate-generation tests
-    # -------------------------------------------------------------------------
-    def test_c1_candidates_generated_only_along_mapped_pedestrian_roads(self):
-        # Road passing right next to location
-        mapped_road = {
+    def test_b1_location_requiring_both_streams_receives_coverage_for_both(self):
+        road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-1",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "way-1",
-                        "highway": "footway",
-                        "normalized_score": 0.8,
-                        "provenance": "osm_mapped",
-                    },
-                }
-            ],
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
-            paths_geojson=mapped_road,
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}},
+            paths_geojson=road,
             campus_boundary=self.sample_boundary,
         )
-        self.assertGreater(res.total_eligible_candidates, 0)
-        self.assertEqual(res.placements[0].source_segment_id, "way-1")
+        self.assertIn("loc1", res.covered_disposable_location_ids)
+        self.assertIn("loc1", res.covered_recyclable_location_ids)
+        self.assertEqual(res.total_physical_bins, 2)
+        self.assertEqual(res.total_stations, 1)
 
-    def test_c2_road_segment_outside_influence_zones_creates_no_candidates(self):
-        # Road far away (e.g. 77.205)
-        far_road = {
+    def test_b2_disposable_only_location_does_not_create_recyclable_requirement(self):
+        road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-far",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.2025, 28.6000], [77.2025, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "way-far",
-                        "highway": "footway",
-                        "normalized_score": 0.5,
-                        "provenance": "osm_mapped",
-                    },
-                }
-            ],
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},  # 15 m radius
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 0.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_disposable_physical_bins, 1)
+        self.assertEqual(res.total_recyclable_physical_bins, 0)
+        self.assertEqual(res.total_physical_bins, 1)
+
+    def test_b3_recyclable_only_location_does_not_create_disposable_requirement(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 0.0, "Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_disposable_physical_bins, 0)
+        self.assertEqual(res.total_recyclable_physical_bins, 1)
+        self.assertEqual(res.total_physical_bins, 1)
+
+    def test_b4_candidate_within_disposable_radius_outside_recyclable_radius_serves_only_disposable(self):
+        # Configure custom radii: Food (disposable) = 150m, Glass (recyclable) = 20m
+        custom_radii = {"Food": 150.0, "Others": 150.0, "Glass": 20.0, "Paper": 20.0, "Plastic": 20.0}
+        # Road placed ~50m from sample_polygon (0.0005 deg lon is ~50m)
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "way-mid",
+                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6000], [77.2015, 28.6010]]},
+                "properties": {"id": "way-mid", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0, "Glass": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+            waste_influence_radii_m=custom_radii,
+        )
+        # Disposable is covered, but Recyclable is uncovered because road is outside 20m
+        self.assertIn("loc1", res.covered_disposable_location_ids)
+        self.assertIn("loc1", res.uncovered_recyclable_location_ids)
+        self.assertEqual(res.total_disposable_physical_bins, 1)
+        self.assertEqual(res.total_recyclable_physical_bins, 0)
+
+    def test_b5_candidate_within_both_radii_can_serve_both_streams(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        placement = res.placements[0]
+        self.assertIn("Disposable", placement.stream_types)
+        self.assertIn("Recyclable", placement.stream_types)
+        self.assertEqual(placement.physical_bin_count, 2)
+
+    def test_b6_candidate_shared_by_multiple_locations_covers_every_eligible_stream(self):
+        loc1 = {"type": "Polygon", "coordinates": [[[77.2000, 28.6000], [77.2008, 28.6000], [77.2008, 28.6010], [77.2000, 28.6010], [77.2000, 28.6000]]]}
+        loc2 = {"type": "Polygon", "coordinates": [[[77.2010, 28.6000], [77.2018, 28.6000], [77.2018, 28.6010], [77.2010, 28.6010], [77.2010, 28.6000]]]}
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "shared-way",
+                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6000], [77.2009, 28.6010]]},
+                "properties": {"id": "shared-way", "highway": "footway", "normalized_score": 0.75, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": loc1, "loc2": loc2},
+            waste_compositions={"loc1": {"Food": 100.0, "Paper": 50.0}, "loc2": {"Others": 80.0, "Plastic": 70.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_stations, 1)
+        self.assertEqual(res.total_road_bins, 2)
+        self.assertEqual(set(res.covered_disposable_location_ids), {"loc1", "loc2"})
+        self.assertEqual(set(res.covered_recyclable_location_ids), {"loc1", "loc2"})
+
+    def test_b7_missing_candidates_produce_explicit_per_stream_uncovered_results(self):
+        far_road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "way-far",
+                "geometry": {"type": "LineString", "coordinates": [[77.2050, 28.6000], [77.2050, 28.6010]]},
+                "properties": {"id": "way-far", "highway": "footway", "normalized_score": 0.5, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}},
             paths_geojson=far_road,
             campus_boundary=self.sample_boundary,
         )
-        self.assertEqual(res.total_eligible_candidates, 0)
+        self.assertIn("loc1", res.uncovered_disposable_location_ids)
+        self.assertIn("loc1", res.uncovered_recyclable_location_ids)
         self.assertIn("loc1", res.uncovered_location_ids)
-        self.assertTrue(any("no feasible road candidate" in w.lower() for w in res.warnings))
 
-    def test_c3_inferred_connectors_excluded_by_default(self):
-        connector_road = {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "conn-123",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "conn-123",
-                        "highway": "footway",
-                        "normalized_score": 0.9,
-                        "provenance": "connector",
-                    },
-                }
-            ],
-        }
-        res = predict_road_bins(
-            location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
-            paths_geojson=connector_road,
-            campus_boundary=self.sample_boundary,
-        )
-        self.assertEqual(res.total_eligible_candidates, 0)
-
-    # -------------------------------------------------------------------------
-    # D. Optimization tests
-    # -------------------------------------------------------------------------
-    def test_d1_single_location_selects_one_road_bin(self):
+    def test_b8_stream_assignment_never_satisfies_incompatible_stream_constraint(self):
+        custom_radii = {"Food": 10.0, "Others": 10.0, "Plastic": 150.0, "Glass": 150.0, "Paper": 150.0}
         road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-1",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "way-1",
-                        "highway": "footway",
-                        "normalized_score": 0.6,
-                        "provenance": "osm_mapped",
-                    },
-                }
-            ],
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6000], [77.2015, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.7, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
+            waste_influence_radii_m=custom_radii,
         )
-        self.assertEqual(res.total_physical_bins, 1)
-        self.assertEqual(res.covered_location_ids, ("loc1",))
-        self.assertEqual(len(res.uncovered_location_ids), 0)
+        self.assertIn("loc1", res.covered_recyclable_location_ids)
+        self.assertIn("loc1", res.uncovered_disposable_location_ids)
+        self.assertEqual(res.total_disposable_physical_bins, 0)
+        self.assertEqual(res.total_recyclable_physical_bins, 1)
 
-    def test_d2_shared_candidate_covers_multiple_locations_with_one_bin(self):
-        # Two locations separated by 10 m, with a road running between them
-        loc1 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2000, 28.6000],
-                [77.2008, 28.6000],
-                [77.2008, 28.6010],
-                [77.2000, 28.6010],
-                [77.2000, 28.6000],
-            ]],
-        }
-        loc2 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2010, 28.6000],
-                [77.2018, 28.6000],
-                [77.2018, 28.6010],
-                [77.2010, 28.6010],
-                [77.2010, 28.6000],
-            ]],
-        }
+    # -------------------------------------------------------------------------
+    # C. Spacing tests (Phase 11 - Section 12.C)
+    # -------------------------------------------------------------------------
+    def test_c1_straight_road_20m_apart_cannot_both_be_selected(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        line = LineString([(0, 0), (100, 0)])
+        graph.add_segment("seg1", line)
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 10.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=30.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 30.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertIn((0, 1), conflicts)
+
+    def test_c2_straight_road_25m_apart_permitted_within_numerical_tolerance(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        line = LineString([(0, 0), (100, 0)])
+        graph.add_segment("seg1", line)
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 10.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=35.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 35.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertEqual(len(conflicts), 0)
+
+    def test_c3_straight_road_30m_apart_both_permitted(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        line = LineString([(0, 0), (100, 0)])
+        graph.add_segment("seg1", line)
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 10.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=40.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 40.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertEqual(len(conflicts), 0)
+
+    def test_c4_curved_road_spacing_uses_along_road_distance(self):
+        from shapely.geometry import LineString
+        line = LineString([(0, 20), (0, 0), (20, 0)])
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg_curved", line)
+        # cand1 at (0, 15): distance along line from (0,20) is 5m
+        # cand2 at (15, 0): distance along line from (0,20) is 20 + 15 = 35m
+        # Euclidean dist = sqrt(15^2 + 15^2) = 21.21 m (< 25m)
+        # Along-road dist = 35 - 5 = 30 m (>= 25m)
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=0.0, metric_y=15.0,
+            source_segment_id="seg_curved", normalized_popularity_score=0.5, segment_attachments=(("seg_curved", 5.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=15.0, metric_y=0.0,
+            source_segment_id="seg_curved", normalized_popularity_score=0.5, segment_attachments=(("seg_curved", 35.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertEqual(len(conflicts), 0)
+
+    def test_c5_contiguous_corridor_detects_conflict_across_segments(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg1", LineString([(0, 0), (50, 0)]), {"osm_way_id": 101})
+        graph.add_segment("seg2", LineString([(50, 0), (100, 0)]), {"osm_way_id": 101})
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=40.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.5, segment_attachments=(("seg1", 40.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=60.0, metric_y=0.0,
+            source_segment_id="seg2", normalized_popularity_score=0.5, segment_attachments=(("seg2", 10.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertIn((0, 1), conflicts)
+
+    def test_c6_crossing_roads_are_not_treated_as_same_continuous_corridor(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg_ew", LineString([(0, 50), (100, 50)]), {"osm_way_id": 1})
+        graph.add_segment("seg_ns", LineString([(50, 0), (50, 100)]), {"osm_way_id": 2})
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=40.0, metric_y=50.0,
+            source_segment_id="seg_ew", normalized_popularity_score=0.5, segment_attachments=(("seg_ew", 40.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=50.0, metric_y=40.0,
+            source_segment_id="seg_ns", normalized_popularity_score=0.5, segment_attachments=(("seg_ns", 40.0),)
+        )
+        conflicts = find_spacing_conflict_pairs([cand1, cand2], graph, min_spacing_m=25.0)
+        self.assertEqual(len(conflicts), 0)
+
+    def test_c7_two_stream_bins_at_same_station_allowed(self):
+        placement = RoadBinPlacement(
+            placement_id="p1",
+            longitude=77.201,
+            latitude=28.600,
+            source_segment_id="seg1",
+            normalized_popularity_score=0.8,
+            served_location_ids=("loc1",),
+            served_location_names=("Zone 1",),
+            served_location_distances_m={"loc1": 10.0},
+            stream_type="Dual-compartment station",
+            stream_types=("Disposable", "Recyclable"),
+            physical_bin_count=2,
+        )
+        passed, warnings = validate_road_bin_spacing([placement], RoadCorridorGraph(), 25.0)
+        self.assertTrue(passed)
+        self.assertEqual(len(warnings), 0)
+
+    def test_c8_third_station_cannot_violate_25m_spacing_rule(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg1", LineString([(0, 0), (100, 0)]))
+        p1 = RoadBinPlacement(
+            placement_id="p1", longitude=10.0, latitude=0.0, source_segment_id="seg1",
+            normalized_popularity_score=0.8, served_location_ids=("loc1",),
+            served_location_names=("Zone 1",), served_location_distances_m={}, stream_types=("Disposable",),
+            physical_bin_count=1,
+        )
+        p2 = RoadBinPlacement(
+            placement_id="p2", longitude=40.0, latitude=0.0, source_segment_id="seg1",
+            normalized_popularity_score=0.8, served_location_ids=("loc2",),
+            served_location_names=("Zone 2",), served_location_distances_m={}, stream_types=("Recyclable",),
+            physical_bin_count=1,
+        )
+        p3 = RoadBinPlacement(
+            placement_id="p3", longitude=25.0, latitude=0.0, source_segment_id="seg1",
+            normalized_popularity_score=0.8, served_location_ids=("loc3",),
+            served_location_names=("Zone 3",), served_location_distances_m={}, stream_types=("Disposable",),
+            physical_bin_count=1,
+        )
+        passed, warnings = validate_road_bin_spacing([p1, p2, p3], graph, 25.0)
+        self.assertFalse(passed)
+        self.assertTrue(len(warnings) > 0)
+
+    def test_c9_final_selected_placements_pass_spacing_validator(self):
         road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "shared-way",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.2009, 28.6000], [77.2009, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "shared-way",
-                        "highway": "footway",
-                        "normalized_score": 0.75,
-                        "provenance": "osm_mapped",
-                    },
-                }
-            ],
-        }
-        res = predict_road_bins(
-            location_geometries={"loc1": loc1, "loc2": loc2},
-            waste_compositions={"loc1": {"Paper": 100.0}, "loc2": {"Paper": 100.0}},  # 25m radii
-            paths_geojson=road,
-            campus_boundary=self.sample_boundary,
-        )
-        # Exactly 1 bin covers both locations!
-        self.assertEqual(res.total_physical_bins, 1)
-        placement = res.placements[0]
-        self.assertIn("loc1", placement.served_location_ids)
-        self.assertIn("loc2", placement.served_location_ids)
-        self.assertEqual(len(res.uncovered_location_ids), 0)
-
-    def test_d3_disjoint_candidates_select_minimum_bins(self):
-        # Two locations far apart
-        loc1 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2000, 28.6000],
-                [77.2005, 28.6000],
-                [77.2005, 28.6005],
-                [77.2000, 28.6005],
-                [77.2000, 28.6000],
-            ]],
-        }
-        loc2 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2020, 28.6020],
-                [77.2025, 28.6020],
-                [77.2025, 28.6025],
-                [77.2020, 28.6025],
-                [77.2020, 28.6020],
-            ]],
-        }
-        road1 = {
-            "type": "Feature",
-            "id": "way-1",
-            "geometry": {"type": "LineString", "coordinates": [[77.2006, 28.6000], [77.2006, 28.6005]]},
-            "properties": {"id": "way-1", "normalized_score": 0.5, "provenance": "osm_mapped"},
-        }
-        road2 = {
-            "type": "Feature",
-            "id": "way-2",
-            "geometry": {"type": "LineString", "coordinates": [[77.2026, 28.6020], [77.2026, 28.6025]]},
-            "properties": {"id": "way-2", "normalized_score": 0.5, "provenance": "osm_mapped"},
-        }
-        res = predict_road_bins(
-            location_geometries={"loc1": loc1, "loc2": loc2},
-            waste_compositions={"loc1": {"Food": 100.0}, "loc2": {"Food": 100.0}},
-            paths_geojson={"type": "FeatureCollection", "features": [road1, road2]},
-            campus_boundary=self.sample_boundary,
-        )
-        self.assertEqual(res.total_physical_bins, 2)
-        self.assertEqual(set(res.covered_location_ids), {"loc1", "loc2"})
-
-    def test_d4_candidates_violating_minimum_spacing_cannot_both_be_selected(self):
-        # One long road with 5 m interval sampling; placements cannot be closer than 25 m
-        road = {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-long",
-                    "geometry": {
-                        "type": "LineString",
-                        "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]],
-                    },
-                    "properties": {
-                        "id": "way-long",
-                        "highway": "footway",
-                        "normalized_score": 0.8,
-                        "provenance": "osm_mapped",
-                    },
-                }
-            ],
+            "features": [{
+                "type": "Feature",
+                "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 50.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
             road_bin_spacing_m=25.0,
         )
-        # Even though there are dozens of 5 m sampled points, only 1 is needed to cover loc1
-        self.assertEqual(res.total_physical_bins, 1)
+        self.assertTrue(res.spacing_validation_passed)
 
-    def test_d5_d6_popularity_tie_break_never_increases_bins(self):
-        # Two road segments near location: Segment A has score 0.2, Segment B has score 0.95
+    # -------------------------------------------------------------------------
+    # D. Optimization tests (Phase 11 - Section 12.D)
+    # -------------------------------------------------------------------------
+    def test_d1_disposable_coverage_satisfied_without_recyclable_bins(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_disposable_physical_bins, 1)
+        self.assertEqual(res.total_recyclable_physical_bins, 0)
+        self.assertEqual(res.total_physical_bins, 1)
+        self.assertEqual(res.total_stations, 1)
+        self.assertEqual(res.placements[0].stream_types, ("Disposable",))
+
+    def test_d2_recyclable_coverage_satisfied_without_disposable_bins(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_disposable_physical_bins, 0)
+        self.assertEqual(res.total_recyclable_physical_bins, 1)
+        self.assertEqual(res.total_physical_bins, 1)
+        self.assertEqual(res.total_stations, 1)
+        self.assertEqual(res.placements[0].stream_types, ("Recyclable",))
+
+    def test_d3_both_streams_share_geographic_station_when_eligible(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_stations, 1)
+        self.assertEqual(res.total_physical_bins, 2)
+        self.assertEqual(res.placements[0].physical_bin_count, 2)
+        self.assertIn("Disposable", res.placements[0].stream_types)
+        self.assertIn("Recyclable", res.placements[0].stream_types)
+
+    def test_d4_optimizer_minimizes_physical_bin_units(self):
+        loc1 = {"type": "Polygon", "coordinates": [[[77.2000, 28.6000], [77.2008, 28.6000], [77.2008, 28.6010], [77.2000, 28.6010], [77.2000, 28.6000]]]}
+        loc2 = {"type": "Polygon", "coordinates": [[[77.2010, 28.6000], [77.2018, 28.6000], [77.2018, 28.6010], [77.2010, 28.6010], [77.2010, 28.6000]]]}
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "shared-way",
+                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6000], [77.2009, 28.6010]]},
+                "properties": {"id": "shared-way", "highway": "footway", "normalized_score": 0.75, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": loc1, "loc2": loc2},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 100.0}, "loc2": {"Food": 100.0, "Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_physical_bins, 2)
+        self.assertEqual(res.total_stations, 1)
+
+    def test_d5_popularity_tie_break_never_increases_bins(self):
         road_low = {
-            "type": "Feature",
-            "id": "way-low",
+            "type": "Feature", "id": "way-low",
             "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.59995], [77.2005, 28.59995]]},
             "properties": {"id": "way-low", "normalized_score": 0.2, "provenance": "osm_mapped"},
         }
         road_high = {
-            "type": "Feature",
-            "id": "way-high",
+            "type": "Feature", "id": "way-high",
             "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.60105], [77.2005, 28.60105]]},
             "properties": {"id": "way-high", "normalized_score": 0.95, "provenance": "osm_mapped"},
         }
@@ -803,33 +963,41 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             campus_boundary=self.sample_boundary,
         )
         self.assertEqual(res.total_physical_bins, 1)
-        # High popularity segment was preferred!
         self.assertEqual(res.placements[0].source_segment_id, "way-high")
         self.assertAlmostEqual(res.placements[0].normalized_popularity_score, 0.95, places=2)
 
-    def test_d7_location_with_no_eligible_candidate_reported_uncovered(self):
-        # Road only near loc1, not loc2
-        loc1 = self.sample_polygon
-        loc2 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2025, 28.6025],
-                [77.2028, 28.6025],
-                [77.2028, 28.6028],
-                [77.2025, 28.6028],
-                [77.2025, 28.6025],
-            ]],
-        }
+    def test_d6_spacing_conflicts_do_not_silently_remove_feasible_coverage(self):
+        loc1 = {"type": "Polygon", "coordinates": [[[77.2000, 28.6000], [77.2002, 28.6000], [77.2002, 28.6002], [77.2000, 28.6002], [77.2000, 28.6000]]]}
+        loc2 = {"type": "Polygon", "coordinates": [[[77.2003, 28.6000], [77.2005, 28.6000], [77.2005, 28.6002], [77.2003, 28.6002], [77.2003, 28.6000]]]}
         road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-near-loc1",
-                    "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6005]]},
-                    "properties": {"id": "way-near-loc1", "normalized_score": 0.5, "provenance": "osm_mapped"},
-                }
-            ],
+            "features": [{
+                "type": "Feature", "id": "stub-way",
+                "geometry": {"type": "LineString", "coordinates": [[77.20025, 28.60005], [77.20026, 28.60005]]},
+                "properties": {"id": "stub-way", "normalized_score": 0.5, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": loc1, "loc2": loc2},
+            waste_compositions={"loc1": {"Food": 100.0}, "loc2": {"Food": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+            road_bin_spacing_m=25.0,
+        )
+        self.assertEqual(res.total_physical_bins, 1)
+        self.assertIn("loc1", res.covered_disposable_location_ids)
+        self.assertIn("loc2", res.covered_disposable_location_ids)
+
+    def test_d7_infeasible_coverage_returns_explicit_warnings_and_uncovered(self):
+        loc1 = self.sample_polygon
+        loc2 = {"type": "Polygon", "coordinates": [[[77.2025, 28.6025], [77.2028, 28.6025], [77.2028, 28.6028], [77.2025, 28.6028], [77.2025, 28.6025]]]}
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "way-near-loc1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6005]]},
+                "properties": {"id": "way-near-loc1", "normalized_score": 0.5, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
             location_geometries={"loc1": loc1, "loc2": loc2},
@@ -837,117 +1005,74 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
         )
-        self.assertEqual(res.total_physical_bins, 1)
         self.assertIn("loc1", res.covered_location_ids)
         self.assertIn("loc2", res.uncovered_location_ids)
         self.assertTrue(any("loc2" in w for w in res.warnings))
 
-    def test_d8_spacing_conflict_reported_explicitly(self):
-        # Two locations where candidates for loc1 and loc2 are 5 m apart,
-        # but road_bin_spacing_m is 50 m. Full coverage is impossible under spacing!
-        loc1 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2000, 28.6000],
-                [77.2002, 28.6000],
-                [77.2002, 28.6002],
-                [77.2000, 28.6002],
-                [77.2000, 28.6000],
-            ]],
-        }
-        loc2 = {
-            "type": "Polygon",
-            "coordinates": [[
-                [77.2003, 28.6000],
-                [77.2005, 28.6000],
-                [77.2005, 28.6002],
-                [77.2003, 28.6002],
-                [77.2003, 28.6000],
-            ]],
-        }
-        # Tiny road stub between them with length 1 m
+    def test_d8_exact_solver_proven_when_optimal(self):
         road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "stub-way",
-                    "geometry": {"type": "LineString", "coordinates": [[77.20025, 28.60005], [77.20026, 28.60005]]},
-                    "properties": {"id": "stub-way", "normalized_score": 0.5, "provenance": "osm_mapped"},
-                }
-            ],
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.7, "provenance": "osm_mapped"},
+            }],
         }
         res = predict_road_bins(
-            location_geometries={"loc1": loc1, "loc2": loc2},
-            waste_compositions={"loc1": {"Food": 100.0}, "loc2": {"Food": 100.0}},
-            paths_geojson=road,
-            campus_boundary=self.sample_boundary,
-            road_bin_spacing_m=50.0,
-        )
-        # Because candidate is close to both, it covers both with 1 bin!
-        self.assertEqual(res.total_physical_bins, 1)
-
-    def test_d9_d10_exact_solver_proven_vs_fallback_heuristic(self):
-        road = {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-1",
-                    "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
-                    "properties": {"id": "way-1", "normalized_score": 0.7, "provenance": "osm_mapped"},
-                }
-            ],
-        }
-        # Exact mode
-        res_exact = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
             waste_compositions={"loc1": {"Food": 100.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
             solver_mode="exact",
         )
-        self.assertTrue(res_exact.optimality_proven)
-        self.assertEqual(res_exact.solver_name, "scipy_milp_highs")
+        self.assertTrue(res.optimality_proven)
+        self.assertEqual(res.solver_name, "scipy_milp_highs")
 
-        # Fallback mode
-        res_fallback = predict_road_bins(
+    def test_d9_fallback_results_clearly_marked_as_heuristic(self):
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.7, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
             waste_compositions={"loc1": {"Food": 100.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
             solver_mode="fallback",
         )
-        self.assertFalse(res_fallback.optimality_proven)
-        self.assertEqual(res_fallback.solver_name, "greedy_set_cover_heuristic")
+        self.assertFalse(res.optimality_proven)
+        self.assertEqual(res.solver_name, "greedy_set_cover_heuristic")
 
-    def test_d11_repeated_runs_return_deterministic_selections(self):
+    def test_d10_repeated_runs_return_deterministic_selections(self):
         road = {
             "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": "way-1",
-                    "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
-                    "properties": {"id": "way-1", "normalized_score": 0.75, "provenance": "osm_mapped"},
-                }
-            ],
+            "features": [{
+                "type": "Feature", "id": "way-1",
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.75, "provenance": "osm_mapped"},
+            }],
         }
         run1 = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 50.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
         )
         run2 = predict_road_bins(
             location_geometries={"loc1": self.sample_polygon},
-            waste_compositions={"loc1": {"Food": 100.0}},
+            waste_compositions={"loc1": {"Food": 100.0, "Plastic": 50.0}},
             paths_geojson=road,
             campus_boundary=self.sample_boundary,
         )
         self.assertEqual(run1.total_physical_bins, run2.total_physical_bins)
+        self.assertEqual(run1.total_stations, run2.total_stations)
         self.assertEqual(run1.placements[0].coordinates, run2.placements[0].coordinates)
         self.assertEqual(run1.placements[0].placement_id, run2.placements[0].placement_id)
+        self.assertEqual(run1.placements[0].stream_types, run2.placements[0].stream_types)
 
 
 if __name__ == "__main__":

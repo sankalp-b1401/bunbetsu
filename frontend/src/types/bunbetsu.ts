@@ -550,23 +550,38 @@ export interface RoadBinPlacementItem {
   served_location_names: string[];
   served_location_distances_m: Record<string, number>;
   stream_type: string;
+  stream_types: string[]; // ['Disposable'] | ['Recyclable'] | ['Disposable', 'Recyclable']
+  served_disposable_location_ids?: string[];
+  served_recyclable_location_ids?: string[];
+  physical_bin_count?: number;
   provenance: string;
 }
 
 export interface RoadBinRecommendationResult {
   total_road_bins: number;
+  total_stations?: number;
+  total_disposable_physical_bins?: number;
+  total_recyclable_physical_bins?: number;
   total_eligible_candidates: number;
   total_locations_requiring_coverage: number;
   covered_location_ids: string[];
   uncovered_location_ids: string[];
+  covered_disposable_location_ids?: string[];
+  covered_recyclable_location_ids?: string[];
+  uncovered_disposable_location_ids?: string[];
+  uncovered_recyclable_location_ids?: string[];
   location_influence_radii_m: Record<string, number>;
   location_dominant_waste_types: Record<string, string>;
+  location_dominant_waste_types_by_stream?: Record<string, Record<string, string>>;
+  location_influence_radii_m_by_stream?: Record<string, Record<string, number>>;
+  location_stream_coverage_status?: Record<string, Record<string, boolean>>;
   candidate_sampling_interval_m: number;
   road_bin_spacing_m: number;
   solver_name: string;
   optimality_proven: boolean;
   total_popularity_score: number;
   placements: RoadBinPlacementItem[];
+  spacing_validation_passed?: boolean;
   warnings: string[];
   assumptions: string[];
 }

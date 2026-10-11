@@ -138,15 +138,19 @@ async function runRoadBinIntegrationTests() {
         warnings: [],
       },
       road_bin_recommendations: {
-        total_road_bins: 1,
+        total_road_bins: 2,
+        total_stations: 1,
+        total_disposable_physical_bins: 1,
+        total_recyclable_physical_bins: 1,
         total_eligible_candidates: 8,
         total_locations_requiring_coverage: 1,
         covered_location_ids: ['loc-1'],
         uncovered_location_ids: [],
-        location_influence_radii_m: { 'loc-1': 25.0 },
+        location_influence_radii_m: { 'loc-1': 100.0 },
         location_dominant_waste_types: { 'loc-1': 'Paper' },
         candidate_sampling_interval_m: 5.0,
         road_bin_spacing_m: 25.0,
+        spacing_validation_passed: true,
         solver_name: 'highs',
         optimality_proven: true,
         total_popularity_score: 0.88,
@@ -161,6 +165,8 @@ async function runRoadBinIntegrationTests() {
             served_location_names: ['Auditorium'],
             served_location_distances_m: { 'loc-1': 12.5 },
             stream_type: 'Dual-compartment station',
+            stream_types: ['Disposable', 'Recyclable'],
+            physical_bin_count: 2,
             provenance: 'road_bin_optimizer',
           },
         ],
@@ -187,7 +193,11 @@ async function runRoadBinIntegrationTests() {
 
   // Check 1: API response contains road-bin result
   assert(planResult.roadBinRecommendations !== null, 'Requirement 1: Road-bin recommendations must not be null');
-  assert(planResult.roadBinRecommendations?.total_road_bins === 1, 'Requirement 1: Total road bins must be 1');
+  assert(planResult.roadBinRecommendations?.total_road_bins === 2, 'Requirement 1: Total road bins must be 2 physical units');
+  assert(planResult.roadBinRecommendations?.total_stations === 1, 'Requirement 1: Total stations must be 1');
+  assert(planResult.roadBinRecommendations?.total_disposable_physical_bins === 1, 'Requirement 1: Disposable physical bins must be 1');
+  assert(planResult.roadBinRecommendations?.total_recyclable_physical_bins === 1, 'Requirement 1: Recyclable physical bins must be 1');
+  assert(planResult.roadBinRecommendations?.spacing_validation_passed === true, 'Requirement 1: Spacing validation passed must be true');
 
   // Check 2: Placement fields correctly mapped
   const placement = planResult.roadBinRecommendations!.placements[0];
@@ -196,6 +206,10 @@ async function runRoadBinIntegrationTests() {
   assert(placement.normalized_popularity_score === 0.88, 'Requirement 2: Popularity score must match');
   assert(placement.served_location_names[0] === 'Auditorium', 'Requirement 2: Serviced location name must match');
   assert(placement.served_location_distances_m['loc-1'] === 12.5, 'Requirement 2: Distance must match');
+  assert(Array.isArray(placement.stream_types), 'Requirement 2: stream_types must be an array');
+  assert(placement.stream_types?.includes('Disposable'), 'Requirement 2: stream_types includes Disposable');
+  assert(placement.stream_types?.includes('Recyclable'), 'Requirement 2: stream_types includes Recyclable');
+  assert(placement.physical_bin_count === 2, 'Requirement 2: physical_bin_count is 2');
 
   // Check 3 & 10: Coordinate order [longitude, latitude] strictly preserved
   assert(Array.isArray(placement.coordinates) && placement.coordinates.length === 2, 'Requirement 3: Coordinates must be 2D tuple');

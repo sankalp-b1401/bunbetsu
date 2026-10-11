@@ -439,29 +439,56 @@ export async function requestCampusPlan(
     const rawRoad = data.road_bin_recommendations;
     roadBinRecommendations = {
       total_road_bins: Number(rawRoad.total_road_bins ?? rawRoad.placements?.length ?? 0),
+      total_stations: rawRoad.total_stations !== undefined ? Number(rawRoad.total_stations) : (Array.isArray(rawRoad.placements) ? rawRoad.placements.length : 0),
+      total_disposable_physical_bins: rawRoad.total_disposable_physical_bins !== undefined ? Number(rawRoad.total_disposable_physical_bins) : undefined,
+      total_recyclable_physical_bins: rawRoad.total_recyclable_physical_bins !== undefined ? Number(rawRoad.total_recyclable_physical_bins) : undefined,
       total_eligible_candidates: Number(rawRoad.total_eligible_candidates ?? 0),
       total_locations_requiring_coverage: Number(rawRoad.total_locations_requiring_coverage ?? 0),
       covered_location_ids: Array.isArray(rawRoad.covered_location_ids) ? rawRoad.covered_location_ids : [],
       uncovered_location_ids: Array.isArray(rawRoad.uncovered_location_ids) ? rawRoad.uncovered_location_ids : [],
+      covered_disposable_location_ids: Array.isArray(rawRoad.covered_disposable_location_ids) ? rawRoad.covered_disposable_location_ids : [],
+      covered_recyclable_location_ids: Array.isArray(rawRoad.covered_recyclable_location_ids) ? rawRoad.covered_recyclable_location_ids : [],
+      uncovered_disposable_location_ids: Array.isArray(rawRoad.uncovered_disposable_location_ids) ? rawRoad.uncovered_disposable_location_ids : [],
+      uncovered_recyclable_location_ids: Array.isArray(rawRoad.uncovered_recyclable_location_ids) ? rawRoad.uncovered_recyclable_location_ids : [],
       location_influence_radii_m: rawRoad.location_influence_radii_m || {},
       location_dominant_waste_types: rawRoad.location_dominant_waste_types || {},
+      location_dominant_waste_types_by_stream: rawRoad.location_dominant_waste_types_by_stream || {},
+      location_influence_radii_m_by_stream: rawRoad.location_influence_radii_m_by_stream || {},
+      location_stream_coverage_status: rawRoad.location_stream_coverage_status || {},
       candidate_sampling_interval_m: Number(rawRoad.candidate_sampling_interval_m ?? 5.0),
       road_bin_spacing_m: Number(rawRoad.road_bin_spacing_m ?? 25.0),
       solver_name: String(rawRoad.solver_name || 'unknown'),
       optimality_proven: Boolean(rawRoad.optimality_proven),
       total_popularity_score: Number(rawRoad.total_popularity_score ?? 0),
+      spacing_validation_passed: rawRoad.spacing_validation_passed !== undefined ? Boolean(rawRoad.spacing_validation_passed) : true,
       placements: Array.isArray(rawRoad.placements)
-        ? rawRoad.placements.map((p: any) => ({
-            id: String(p.id),
-            coordinates: [Number(p.coordinates[0]), Number(p.coordinates[1])] as [number, number],
-            source_segment_id: String(p.source_segment_id || ''),
-            normalized_popularity_score: Number(p.normalized_popularity_score ?? 0),
-            served_location_ids: Array.isArray(p.served_location_ids) ? p.served_location_ids : [],
-            served_location_names: Array.isArray(p.served_location_names) ? p.served_location_names : [],
-            served_location_distances_m: p.served_location_distances_m || {},
-            stream_type: String(p.stream_type || 'Dual-compartment station'),
-            provenance: String(p.provenance || 'road_bin_optimizer'),
-          }))
+        ? rawRoad.placements.map((p: any) => {
+            let streams: string[] = [];
+            if (Array.isArray(p.stream_types) && p.stream_types.length > 0) {
+              streams = p.stream_types.map(String);
+            } else if (p.stream_type === 'Disposable') {
+              streams = ['Disposable'];
+            } else if (p.stream_type === 'Recyclable') {
+              streams = ['Recyclable'];
+            } else if (p.stream_type) {
+              streams = ['Disposable', 'Recyclable'];
+            }
+            return {
+              id: String(p.id),
+              coordinates: [Number(p.coordinates[0]), Number(p.coordinates[1])] as [number, number],
+              source_segment_id: String(p.source_segment_id || ''),
+              normalized_popularity_score: Number(p.normalized_popularity_score ?? 0),
+              served_location_ids: Array.isArray(p.served_location_ids) ? p.served_location_ids : [],
+              served_location_names: Array.isArray(p.served_location_names) ? p.served_location_names : [],
+              served_location_distances_m: p.served_location_distances_m || {},
+              stream_type: String(p.stream_type || (streams.length === 2 ? 'Disposable & Recyclable' : streams[0] || 'Unknown')),
+              stream_types: streams,
+              served_disposable_location_ids: Array.isArray(p.served_disposable_location_ids) ? p.served_disposable_location_ids : [],
+              served_recyclable_location_ids: Array.isArray(p.served_recyclable_location_ids) ? p.served_recyclable_location_ids : [],
+              physical_bin_count: Number(p.physical_bin_count ?? (streams.length || 1)),
+              provenance: String(p.provenance || 'road_bin_optimizer'),
+            };
+          })
         : [],
       warnings: Array.isArray(rawRoad.warnings) ? rawRoad.warnings : [],
       assumptions: Array.isArray(rawRoad.assumptions) ? rawRoad.assumptions : [],

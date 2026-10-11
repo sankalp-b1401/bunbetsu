@@ -1456,7 +1456,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       });
     }
 
-    // Visually distinct road-bin placement markers
+    // Road-bin placement markers using stream-aware icon conventions
     if (showBins && roadBinRecommendations?.placements?.length) {
       roadBinRecommendations.placements.forEach((rbin) => {
         if (
@@ -1470,16 +1470,57 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           return;
         }
 
+        const streams = Array.isArray(rbin.stream_types) && rbin.stream_types.length > 0
+          ? rbin.stream_types
+          : (rbin.stream_type === "Disposable"
+              ? ["Disposable"]
+              : rbin.stream_type === "Recyclable"
+              ? ["Recyclable"]
+              : ["Disposable", "Recyclable"]);
+
+        const isDisp = streams.includes("Disposable");
+        const isRec = streams.includes("Recyclable");
+        const isBoth = isDisp && isRec;
+
         const el = document.createElement("div");
         el.className =
           "group flex items-center justify-center cursor-pointer select-none";
         const servNames = (rbin.served_location_names || []).join(", ");
-        const title = `Road Bin (${rbin.id}): ${rbin.stream_type} · Serves: ${servNames} · Popularity: ${(rbin.normalized_popularity_score * 100).toFixed(0)}%`;
-        el.innerHTML = `
-          <div class="flex items-center justify-center w-7 h-7 rounded-full shadow-lg border-2 border-white text-xs hover:scale-115 transition-transform bg-[#D97706] ring-2 ring-amber-400/60" title="${title}">
-            <span class="text-[11px] leading-none text-white font-bold">🚏</span>
-          </div>
-        `;
+        const streamLabel = isBoth
+          ? "Disposable & Recyclable"
+          : isRec
+          ? "Recyclable"
+          : "Disposable";
+        const title = `Road Bin (${rbin.id}): ${streamLabel} · Serves: ${servNames} · Popularity: ${(rbin.normalized_popularity_score * 100).toFixed(0)}%`;
+
+        if (isBoth) {
+          // Grouped compact side-by-side treatment at the same geographic station
+          el.innerHTML = `
+            <div class="flex items-center gap-0.5 p-0.5 bg-white/95 backdrop-blur-xs rounded-md shadow-md border border-neutral-300 hover:scale-110 transition-transform" title="${title}">
+              <div class="flex items-center justify-center w-5 h-5 rounded shadow-xs text-xs" style="background-color: #2563EB;">
+                <span class="text-[10px] leading-none">🗑️</span>
+              </div>
+              <div class="flex items-center justify-center w-5 h-5 rounded shadow-xs text-xs" style="background-color: #16A34A;">
+                <span class="text-[10px] leading-none">♻️</span>
+              </div>
+            </div>
+          `;
+        } else if (isRec) {
+          // Recyclable only: same icon as on-location
+          el.innerHTML = `
+            <div class="flex items-center justify-center w-6 h-6 rounded-md shadow-md border-1.5 border-white text-xs hover:scale-110 transition-transform" style="background-color: #16A34A;" title="${title}">
+              <span class="text-[11px] leading-none">♻️</span>
+            </div>
+          `;
+        } else {
+          // Disposable only: same icon as on-location
+          el.innerHTML = `
+            <div class="flex items-center justify-center w-6 h-6 rounded-md shadow-md border-1.5 border-white text-xs hover:scale-110 transition-transform" style="background-color: #2563EB;" title="${title}">
+              <span class="text-[11px] leading-none">🗑️</span>
+            </div>
+          `;
+        }
+
         el.addEventListener("click", (e) => {
           e.stopPropagation();
         });

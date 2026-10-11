@@ -24,7 +24,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 import math
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 from pyproj import CRS, Transformer
@@ -75,15 +75,18 @@ DEFAULT_BOUNDARY_INSET_M = 1.5
 DEFAULT_CLOSE_SPACING_WARNING_M = 3.0
 
 # Waste-type-specific influence radii (in metres)
-# Provisional baseline engineering radii measured outward from activity polygon boundary.
+# Baseline engineering assumptions (100–150 m) measured outward from activity polygon boundary.
 DEFAULT_WASTE_INFLUENCE_RADII_M: dict[str, float] = {
-    "Food": 15.0,
-    "Glass": 15.0,
-    "Others": 20.0,
-    "Paper": 25.0,
-    "Plastic": 25.0,
+    "Food": 100.0,
+    "Glass": 100.0,
+    "Others": 125.0,
+    "Paper": 150.0,
+    "Plastic": 150.0,
 }
 WASTE_INFLUENCE_RADII_M = DEFAULT_WASTE_INFLUENCE_RADII_M
+
+DISPOSABLE_WASTE_CATEGORIES: tuple[str, ...] = ("Food", "Others")
+RECYCLABLE_WASTE_CATEGORIES: tuple[str, ...] = ("Glass", "Paper", "Plastic")
 
 DEFAULT_ROAD_BIN_SPACING_M = 25.0
 DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M = 5.0
@@ -281,7 +284,10 @@ class RoadBinCandidate:
     metric_y: float
     source_segment_id: str
     normalized_popularity_score: float
-    served_location_ids: tuple[str, ...]
+    served_location_ids: tuple[str, ...] = ()
+    eligible_disposable_location_ids: tuple[str, ...] = ()
+    eligible_recyclable_location_ids: tuple[str, ...] = ()
+    segment_attachments: tuple[tuple[str, float], ...] = ()
 
     @property
     def coordinates(self) -> tuple[float, float]:
@@ -301,6 +307,10 @@ class RoadBinPlacement:
     served_location_names: tuple[str, ...]
     served_location_distances_m: dict[str, float]
     stream_type: str = "Dual-compartment station"
+    stream_types: tuple[str, ...] = ("Disposable", "Recyclable")
+    served_disposable_location_ids: tuple[str, ...] = ()
+    served_recyclable_location_ids: tuple[str, ...] = ()
+    physical_bin_count: int = 1
     provenance: str = "road_bin_optimizer"
 
     @property
@@ -327,7 +337,23 @@ class RoadBinPrediction:
     total_popularity_score: float
     warnings: tuple[str, ...]
     assumptions: tuple[str, ...]
+    total_stations: int = 0
+    total_disposable_physical_bins: int = 0
+    total_recyclable_physical_bins: int = 0
+    covered_disposable_location_ids: tuple[str, ...] = ()
+    covered_recyclable_location_ids: tuple[str, ...] = ()
+    uncovered_disposable_location_ids: tuple[str, ...] = ()
+    uncovered_recyclable_location_ids: tuple[str, ...] = ()
+    location_dominant_waste_types_by_stream: dict[str, dict[str, str]] = dataclasses.field(default_factory=dict)
+    location_influence_radii_m_by_stream: dict[str, dict[str, float]] = dataclasses.field(default_factory=dict)
+    location_stream_coverage_status: dict[str, dict[str, bool]] = dataclasses.field(default_factory=dict)
+    spacing_validation_passed: bool = True
+    spacing_violations: tuple[str, ...] = ()
     diagnostics: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    @property
+    def total_road_bins(self) -> int:
+        return self.total_physical_bins
 
 
 def _validate_density_map(densities: Mapping[str, float]) -> None:
@@ -1075,6 +1101,99 @@ def get_influence_radius_m(
     return rad
 
 
+def determine_stream_dominant_waste_types(
+    composition_mass_kg: Mapping[str, Any] | LocationWasteAllocation,
+    radii_map: Mapping[str, float] | None = None,
+) -> dict[str, Any]:
+    """Identify dominant categories, radii, and coverage requirements independently for Disposable and Recyclable streams.
+
+    Disposable stream:
+      Categories: Food, Others
+      r_i^D = R_{t_i^D} where t_i^D = argmax_{t in {Food, Others}} W_{i, t}
+      Provisional baseline: Food = 100m, Others = 125m
+
+    Recyclable stream:
+      Categories: Plastic, Paper, Glass
+      r_i^R = R_{t_i^R} where t_i^R = argmax_{t in {Plastic, Paper, Glass}} W_{i, t}
+      Provisional baseline: Glass = 100m, Paper = 150m, Plastic = 150m
+
+    Ties broken deterministically by canonical alphabetical category order.
+    A stream requires coverage if and only if its predicted central waste mass is positive.
+    """
+    if isinstance(composition_mass_kg, LocationWasteAllocation):
+        comp_dict = composition_mass_kg.composition_kg
+    elif isinstance(composition_mass_kg, Mapping):
+        comp_dict = composition_mass_kg
+    else:
+        raise ValueError("Waste composition must be a mapping or LocationWasteAllocation.")
+
+    if not comp_dict:
+        raise ValueError("Waste composition map cannot be empty.")
+
+    active_radii = dict(DEFAULT_WASTE_INFLUENCE_RADII_M if radii_map is None else radii_map)
+
+    parsed_masses: dict[str, float] = {}
+    for cat, val in comp_dict.items():
+        if hasattr(val, "central"):
+            m = float(val.central)
+        elif isinstance(val, dict) and "central" in val:
+            m = float(val["central"])
+        elif isinstance(val, (int, float)):
+            m = float(val)
+        else:
+            raise ValueError(f"Invalid waste mass value for category {cat!r}: {val!r}")
+
+        if not math.isfinite(m) or m < 0:
+            raise ValueError(
+                f"Waste mass for category {cat!r} must be non-negative and finite, got {m}."
+            )
+        parsed_masses[str(cat)] = m
+
+    # 1. Disposable stream (Food, Others)
+    disp_masses = {c: parsed_masses.get(c, 0.0) for c in DISPOSABLE_WASTE_CATEGORIES}
+    disp_total = sum(disp_masses.values())
+    disp_requires_cov = disp_total > 0
+
+    sorted_disp = sorted(disp_masses.keys(), key=lambda c: (-disp_masses[c], c))
+    dom_disp = sorted_disp[0]
+    rad_disp = get_influence_radius_m(dom_disp, active_radii)
+
+    # 2. Recyclable stream (Glass, Paper, Plastic)
+    rec_masses = {c: parsed_masses.get(c, 0.0) for c in RECYCLABLE_WASTE_CATEGORIES}
+    rec_total = sum(rec_masses.values())
+    rec_requires_cov = rec_total > 0
+
+    sorted_rec = sorted(rec_masses.keys(), key=lambda c: (-rec_masses[c], c))
+    dom_rec = sorted_rec[0]
+    rad_rec = get_influence_radius_m(dom_rec, active_radii)
+
+    # 3. Overall dominant category for compatibility
+    sorted_all = sorted(parsed_masses.keys(), key=lambda c: (-parsed_masses[c], c))
+    dom_overall = sorted_all[0] if sorted_all else dom_disp
+    rad_overall = get_influence_radius_m(dom_overall, active_radii)
+
+    return {
+        "disposable": {
+            "dominant_category": dom_disp,
+            "mass_kg": disp_masses[dom_disp],
+            "total_stream_mass_kg": disp_total,
+            "radius_m": rad_disp,
+            "requires_coverage": disp_requires_cov,
+        },
+        "recyclable": {
+            "dominant_category": dom_rec,
+            "mass_kg": rec_masses[dom_rec],
+            "total_stream_mass_kg": rec_total,
+            "radius_m": rad_rec,
+            "requires_coverage": rec_requires_cov,
+        },
+        "overall": {
+            "dominant_category": dom_overall,
+            "radius_m": rad_overall,
+        },
+    }
+
+
 def construct_influence_zone_m(
     polygon_m: Polygon | MultiPolygon,
     radius_m: float,
@@ -1111,161 +1230,486 @@ def _extract_linestrings_m(geom: Any) -> list[LineString]:
     return lines
 
 
-def _solve_greedy_fallback(
+class RoadCorridorGraph:
+    """Manages mapped pedestrian road segments, corridors, linear referencing, and along-road distances."""
+
+    def __init__(self) -> None:
+        self.segments: dict[str, LineString] = {}
+        self.lengths: dict[str, float] = {}
+        self.props: dict[str, dict[str, Any]] = {}
+        # Mapping: seg_id -> list of connected segment info:
+        # dict(other_seg_id=..., self_end="start"|"end", other_end="start"|"end")
+        self.corridor_adj: dict[str, list[dict[str, Any]]] = {}
+
+    def add_segment(self, seg_id: str, line_m: LineString, properties: Mapping[str, Any] | None = None) -> None:
+        if line_m.length <= 0:
+            return
+        self.segments[seg_id] = line_m
+        self.lengths[seg_id] = float(line_m.length)
+        self.props[seg_id] = dict(properties or {})
+        if seg_id not in self.corridor_adj:
+            self.corridor_adj[seg_id] = []
+        self._topology_built = False
+
+    def build_topology(self) -> None:
+        """Identify continuous road corridors between contiguous segments."""
+        self._topology_built = True
+        seg_ids = list(self.segments.keys())
+        for i in range(len(seg_ids)):
+            id_a = seg_ids[i]
+            geom_a = self.segments[id_a]
+            len_a = self.lengths[id_a]
+            props_a = self.props[id_a]
+            way_a = props_a.get("osm_way_id")
+
+            pt_a_start = geom_a.interpolate(0.0)
+            pt_a_end = geom_a.interpolate(len_a)
+
+            for j in range(i + 1, len(seg_ids)):
+                id_b = seg_ids[j]
+                geom_b = self.segments[id_b]
+                len_b = self.lengths[id_b]
+                props_b = self.props[id_b]
+                way_b = props_b.get("osm_way_id")
+
+                if geom_a.distance(geom_b) > 1.0:
+                    continue
+
+                pt_b_start = geom_b.interpolate(0.0)
+                pt_b_end = geom_b.interpolate(len_b)
+
+                combos = [
+                    ("end", "start", pt_a_end, pt_b_start),
+                    ("start", "end", pt_a_start, pt_b_end),
+                    ("end", "end", pt_a_end, pt_b_end),
+                    ("start", "start", pt_a_start, pt_b_start),
+                ]
+
+                for end_a, end_b, p_a, p_b in combos:
+                    if p_a.distance(p_b) <= 1.0:
+                        same_corridor = False
+                        if way_a is not None and way_b is not None and way_a == way_b:
+                            same_corridor = True
+                        else:
+                            # Evaluate tangent vectors at junction
+                            delta_a = min(2.0, len_a * 0.49) if len_a > 1e-4 else 0.0
+                            delta_b = min(2.0, len_b * 0.49) if len_b > 1e-4 else 0.0
+
+                            if delta_a > 0 and delta_b > 0:
+                                if end_a == "end":
+                                    ref_a = geom_a.interpolate(len_a - delta_a)
+                                    vec_a = (p_a.x - ref_a.x, p_a.y - ref_a.y)
+                                else:
+                                    ref_a = geom_a.interpolate(delta_a)
+                                    vec_a = (p_a.x - ref_a.x, p_a.y - ref_a.y)
+
+                                if end_b == "start":
+                                    ref_b = geom_b.interpolate(delta_b)
+                                    vec_b = (ref_b.x - p_b.x, ref_b.y - p_b.y)
+                                else:
+                                    ref_b = geom_b.interpolate(len_b - delta_b)
+                                    vec_b = (ref_b.x - p_b.x, ref_b.y - p_b.y)
+
+                                mag_a = math.hypot(vec_a[0], vec_a[1])
+                                mag_b = math.hypot(vec_b[0], vec_b[1])
+                                if mag_a > 1e-6 and mag_b > 1e-6:
+                                    cos_theta = (vec_a[0] * vec_b[0] + vec_a[1] * vec_b[1]) / (mag_a * mag_b)
+                                    # Continuous corridor if deflection angle <= 60 degrees (cos_theta >= 0.5)
+                                    if cos_theta >= 0.5:
+                                        same_corridor = True
+
+                        if same_corridor:
+                            self.corridor_adj[id_a].append({
+                                "other_seg_id": id_b,
+                                "self_end": end_a,
+                                "other_end": end_b,
+                            })
+                            self.corridor_adj[id_b].append({
+                                "other_seg_id": id_a,
+                                "self_end": end_b,
+                                "other_end": end_a,
+                            })
+
+    def along_corridor_distance(
+        self,
+        attachments_1: Mapping[str, float] | Sequence[tuple[str, float]],
+        attachments_2: Mapping[str, float] | Sequence[tuple[str, float]],
+        max_dist_m: float = 30.0,
+    ) -> float | None:
+        """Find the shortest distance along continuous road corridors between two candidate attachments."""
+        if not getattr(self, "_topology_built", False):
+            self.build_topology()
+
+        att_map_1 = dict(attachments_1) if not isinstance(attachments_1, Mapping) else attachments_1
+        att_map_2 = dict(attachments_2) if not isinstance(attachments_2, Mapping) else attachments_2
+
+        if not att_map_1 or not att_map_2:
+            return None
+
+        # 1. Check shared segments
+        common_segs = set(att_map_1.keys()) & set(att_map_2.keys())
+        min_d: float | None = None
+        for s in common_segs:
+            d = abs(att_map_1[s] - att_map_2[s])
+            if min_d is None or d < min_d:
+                min_d = d
+
+        # 2. Check contiguous corridor connections
+        queue: list[tuple[str, str, float]] = []
+        for seg_a, offset_a in att_map_1.items():
+            len_a = self.lengths.get(seg_a, 0.0)
+            d_to_start = offset_a
+            d_to_end = max(0.0, len_a - offset_a)
+            if d_to_start <= max_dist_m:
+                queue.append((seg_a, "start", d_to_start))
+            if d_to_end <= max_dist_m:
+                queue.append((seg_a, "end", d_to_end))
+
+        visited: set[tuple[str, str]] = set()
+        while queue:
+            cur_seg, cur_end, dist_to_junction = queue.pop(0)
+            if (cur_seg, cur_end) in visited:
+                continue
+            visited.add((cur_seg, cur_end))
+
+            for conn in self.corridor_adj.get(cur_seg, []):
+                if conn["self_end"] == cur_end:
+                    other_seg = conn["other_seg_id"]
+                    other_end = conn["other_end"]
+                    len_other = self.lengths.get(other_seg, 0.0)
+
+                    if other_seg in att_map_2:
+                        offset_b = att_map_2[other_seg]
+                        dist_in_b = offset_b if other_end == "start" else max(0.0, len_other - offset_b)
+                        total_d = dist_to_junction + dist_in_b
+                        if min_d is None or total_d < min_d:
+                            min_d = total_d
+
+                    dist_to_far_end = dist_to_junction + len_other
+                    far_end = "end" if other_end == "start" else "start"
+                    if dist_to_far_end <= max_dist_m:
+                        queue.append((other_seg, far_end, dist_to_far_end))
+
+        return min_d
+
+
+def find_spacing_conflict_pairs(
     candidates: list[RoadBinCandidate],
-    location_ids: list[str],
-    road_bin_spacing_m: float,
-) -> tuple[list[int], bool, str, list[str]]:
-    """Greedy fallback heuristic for road-bin placement.
-
-    1. Select a feasible candidate that covers the greatest number of currently uncovered locations.
-    2. Break ties using route popularity, then stable index.
-    3. Remove candidates conflicting with the selected point under the spacing rule.
-    4. Repeat until all locations are covered or no feasible candidate remains.
-    5. Report that the solution is heuristic.
-    """
-    uncovered = set(location_ids)
-    remaining_indices = list(range(len(candidates)))
-    selected_indices: list[int] = []
-    warnings: list[str] = []
-
-    while uncovered and remaining_indices:
-        best_idx: int | None = None
-        best_key = (-1, -1.0, 1)
-
-        for idx in remaining_indices:
-            c = candidates[idx]
-            cov_count = len(set(c.served_location_ids) & uncovered)
-            key = (cov_count, c.normalized_popularity_score, -idx)
-            if key > best_key:
-                best_key = key
-                best_idx = idx
-
-        if best_idx is None or best_key[0] <= 0:
-            break
-
-        selected_c = candidates[best_idx]
-        selected_indices.append(best_idx)
-        uncovered -= set(selected_c.served_location_ids)
-
-        remaining_indices = [
-            idx
-            for idx in remaining_indices
-            if math.hypot(
-                candidates[idx].metric_x - selected_c.metric_x,
-                candidates[idx].metric_y - selected_c.metric_y,
-            )
-            >= road_bin_spacing_m - 1e-4
-        ]
-
-    if uncovered:
-        warnings.append(
-            f"Spacing conflicts or candidate unavailability prevented covering {len(uncovered)} location(s): {sorted(uncovered)}."
-        )
-
-    return selected_indices, False, "greedy_set_cover_heuristic", warnings
-
-
-def _solve_road_bin_placement(
-    candidates: list[RoadBinCandidate],
-    location_ids: list[str],
-    road_bin_spacing_m: float,
-    solver_mode: str = "exact",
-) -> tuple[list[int], bool, str, list[str]]:
-    """Solve the road-bin placement optimization.
-
-    Lexicographical objective:
-    1. Minimize the number of physical road bins to cover all feasible locations.
-    2. Among solutions with the minimum bin count, maximize aggregate popularity score.
-    Spacing constraint:
-    Pairwise distance < road_bin_spacing_m => z_j + z_k <= 1.
-    """
+    corridor_graph: RoadCorridorGraph,
+    road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+    min_spacing_m: float | None = None,
+) -> list[tuple[int, int]]:
+    """Identify candidate pairs that conflict under the along-corridor spacing rule."""
+    if min_spacing_m is not None:
+        road_bin_spacing_m = min_spacing_m
     m = len(candidates)
-    if m == 0 or not location_ids:
-        return [], False, "no_candidates", []
-
-    # Map each location to the candidate indices that serve it
-    candidates_serving_loc = {
-        loc_id: [j for j, c in enumerate(candidates) if loc_id in c.served_location_ids]
-        for loc_id in location_ids
-    }
-    uncovered_initially = [
-        loc_id for loc_id, c_indices in candidates_serving_loc.items() if not c_indices
-    ]
-    feasible_loc_ids = [loc_id for loc_id in location_ids if loc_id not in uncovered_initially]
-
-    if not feasible_loc_ids:
-        return [], False, "no_feasible_candidates", []
-
-    # Build pairwise conflict constraints: dist(j, k) < road_bin_spacing_m => z_j + z_k <= 1
     conflict_pairs: list[tuple[int, int]] = []
     for i in range(m):
         c_i = candidates[i]
         for j in range(i + 1, m):
             c_j = candidates[j]
-            d = math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y)
-            if d < road_bin_spacing_m - 1e-4:
+            # Spatial filter: straight-line Euclidean distance is a lower bound on road distance.
+            # If Euclidean >= spacing_m, road distance must also be >= spacing_m.
+            if math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y) >= road_bin_spacing_m:
+                continue
+
+            dist = corridor_graph.along_corridor_distance(
+                c_i.segment_attachments,
+                c_j.segment_attachments,
+                max_dist_m=road_bin_spacing_m,
+            )
+            if dist is not None and dist < road_bin_spacing_m - 1e-4:
                 conflict_pairs.append((i, j))
+    return conflict_pairs
+
+
+def validate_road_bin_spacing(
+    placements: Sequence[RoadBinPlacement],
+    corridor_graph: RoadCorridorGraph,
+    placement_attachments: Mapping[str, Any] | float | None = None,
+    road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+) -> tuple[bool, list[str]]:
+    """Validate that all selected physical road-bin placements satisfy the 25 m spacing policy along continuous road corridors."""
+    if isinstance(placement_attachments, (int, float)):
+        road_bin_spacing_m = float(placement_attachments)
+        placement_attachments = None
+
+    if placement_attachments is None:
+        placement_attachments = {}
+        for p in placements:
+            if p.source_segment_id in corridor_graph.segments:
+                seg = corridor_graph.segments[p.source_segment_id]
+                offset = seg.project(Point(p.coordinates[0], p.coordinates[1]))
+                placement_attachments[p.placement_id] = {p.source_segment_id: float(offset)}
+            else:
+                placement_attachments[p.placement_id] = {p.source_segment_id: 0.0}
+
+    violations: list[str] = []
+    n = len(placements)
+    for i in range(n):
+        p_i = placements[i]
+        att_i = placement_attachments.get(p_i.placement_id, {p_i.source_segment_id: 0.0})
+        for j in range(i + 1, n):
+            p_j = placements[j]
+            att_j = placement_attachments.get(p_j.placement_id, {p_j.source_segment_id: 0.0})
+
+            dist = corridor_graph.along_corridor_distance(att_i, att_j, max_dist_m=road_bin_spacing_m + 5.0)
+            if dist is not None and dist < road_bin_spacing_m - 1e-4:
+                violations.append(
+                    f"Selected placements {p_i.placement_id!r} and {p_j.placement_id!r} along the same road "
+                    f"corridor are {dist:.2f} m apart, violating the minimum {road_bin_spacing_m} m spacing policy."
+                )
+    return len(violations) == 0, violations
+
+
+def _solve_greedy_fallback(
+    candidates: list[RoadBinCandidate],
+    location_ids_disposable: list[str],
+    location_ids_recyclable: list[str],
+    conflict_pairs: list[tuple[int, int]],
+    road_bin_spacing_m: float,
+) -> tuple[list[tuple[int, list[str]]], bool, str, list[str]]:
+    """Greedy fallback heuristic for stream-aware road-bin placement.
+
+    Selects candidates and assigned streams (Disposable, Recyclable, or Both) to maximize
+    uncovered stream requirement coverage per physical bin unit while strictly enforcing
+    the along-road spacing conflict constraints.
+    """
+    m = len(candidates)
+    uncovered_D = set(location_ids_disposable)
+    uncovered_R = set(location_ids_recyclable)
+    remaining_indices = set(range(m))
+
+    # Pre-build conflict adjacency
+    conflict_adj: dict[int, set[int]] = {i: set() for i in range(m)}
+    for j, k in conflict_pairs:
+        conflict_adj[j].add(k)
+        conflict_adj[k].add(j)
+
+    selected: list[tuple[int, list[str]]] = []
+    warnings: list[str] = []
+
+    while (uncovered_D or uncovered_R) and remaining_indices:
+        best_cand: int | None = None
+        best_streams: list[str] = []
+        best_key = (-1.0, -1, -1.0, 1)
+
+        for idx in remaining_indices:
+            c = candidates[idx]
+            cov_D = len(set(c.eligible_disposable_location_ids) & uncovered_D)
+            cov_R = len(set(c.eligible_recyclable_location_ids) & uncovered_R)
+
+            # Option 1: Both streams (2 physical bins)
+            if cov_D > 0 and cov_R > 0:
+                eff = (cov_D + cov_R) / 2.0
+                tot = cov_D + cov_R
+                key = (eff, tot, c.normalized_popularity_score, -idx)
+                if key > best_key:
+                    best_key = key
+                    best_cand = idx
+                    best_streams = ["Disposable", "Recyclable"]
+
+            # Option 2: Disposable only (1 physical bin)
+            if cov_D > 0:
+                eff = float(cov_D)
+                tot = cov_D
+                key = (eff, tot, c.normalized_popularity_score, -idx)
+                if key > best_key:
+                    best_key = key
+                    best_cand = idx
+                    best_streams = ["Disposable"]
+
+            # Option 3: Recyclable only (1 physical bin)
+            if cov_R > 0:
+                eff = float(cov_R)
+                tot = cov_R
+                key = (eff, tot, c.normalized_popularity_score, -idx)
+                if key > best_key:
+                    best_key = key
+                    best_cand = idx
+                    best_streams = ["Recyclable"]
+
+        if best_cand is None or best_key[0] <= 0:
+            break
+
+        selected_c = candidates[best_cand]
+        selected.append((best_cand, best_streams))
+
+        if "Disposable" in best_streams:
+            uncovered_D -= set(selected_c.eligible_disposable_location_ids)
+        if "Recyclable" in best_streams:
+            uncovered_R -= set(selected_c.eligible_recyclable_location_ids)
+
+        # Remove the selected candidate and all candidates conflicting under spacing
+        conflicts = conflict_adj.get(best_cand, set())
+        remaining_indices.discard(best_cand)
+        remaining_indices -= conflicts
+
+    if uncovered_D or uncovered_R:
+        warnings.append(
+            f"Spacing conflicts or candidate unavailability prevented covering: "
+            f"Disposable={sorted(uncovered_D)}, Recyclable={sorted(uncovered_R)}."
+        )
+
+    return selected, False, "greedy_set_cover_heuristic", warnings
+
+
+def _solve_road_bin_placement(
+    candidates: list[RoadBinCandidate],
+    location_ids: list[str] | None = None,
+    road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+    solver_mode: str = "exact",
+    *,
+    location_ids_disposable: list[str] | None = None,
+    location_ids_recyclable: list[str] | None = None,
+    conflict_pairs: list[tuple[int, int]] | None = None,
+) -> tuple[list[tuple[int, list[str]]], bool, str, list[str]]:
+    """Solve the road-bin placement optimization.
+
+    Lexicographical objective:
+    1. Minimize total physical road-bin units: sum(z_{j,D} + z_{j,R}).
+    2. Among minimum-bin solutions, maximize popularity-weighted quality of selected placements.
+
+    Spacing constraint:
+    y_j + y_k <= 1 for all conflict pairs (j, k) along the same continuous corridor.
+    z_{j,D} <= y_j, z_{j,R} <= y_j allows co-locating both streams at station j.
+    """
+    m = len(candidates)
+    if location_ids_disposable is None:
+        location_ids_disposable = list(location_ids or [])
+    if location_ids_recyclable is None:
+        location_ids_recyclable = list(location_ids or [])
+    if conflict_pairs is None:
+        conflict_pairs = []
+
+    if m == 0 or (not location_ids_disposable and not location_ids_recyclable):
+        return [], False, "no_candidates", []
+
+    # Map each location to candidate indices that can serve it
+    c_disp = {
+        loc_id: [j for j, c in enumerate(candidates) if loc_id in c.eligible_disposable_location_ids]
+        for loc_id in location_ids_disposable
+    }
+    c_rec = {
+        loc_id: [j for j, c in enumerate(candidates) if loc_id in c.eligible_recyclable_location_ids]
+        for loc_id in location_ids_recyclable
+    }
+
+    feasible_disp = [loc_id for loc_id, c_idx in c_disp.items() if c_idx]
+    feasible_rec = [loc_id for loc_id, c_idx in c_rec.items() if c_idx]
+
+    if not feasible_disp and not feasible_rec:
+        return [], False, "no_feasible_candidates", []
 
     # Try Exact ILP via scipy.optimize.milp
     if solver_mode in ("exact", "auto") and HAS_SCIPY:
-        c_stage1 = np.ones(m)
-        integrality = np.ones(m)
-        bounds = Bounds(0, 1)
+        # Variables: [0..m-1] = z_{j,D}, [m..2m-1] = z_{j,R}, [2m..3m-1] = y_j
+        num_vars = 3 * m
+        integrality = np.ones(num_vars)
+        lb = np.zeros(num_vars)
+        ub = np.ones(num_vars)
 
-        num_locs = len(feasible_loc_ids)
-        A_cov = np.zeros((num_locs, m))
-        for row_idx, loc_id in enumerate(feasible_loc_ids):
-            for col_idx in candidates_serving_loc[loc_id]:
-                A_cov[row_idx, col_idx] = 1.0
+        # Candidates that cannot serve any location have upper bound 0
+        cand_has_disp = set(j for c_list in c_disp.values() for j in c_list)
+        cand_has_rec = set(j for c_list in c_rec.values() for j in c_list)
+        for j in range(m):
+            if j not in cand_has_disp:
+                ub[j] = 0.0
+            if j not in cand_has_rec:
+                ub[m + j] = 0.0
 
-        cov_constraint = LinearConstraint(A_cov, np.ones(num_locs), np.full(num_locs, np.inf))
-        constraints = [cov_constraint]
+        bounds = Bounds(lb, ub)
 
+        # 1. Coverage constraints
+        constraints: list[LinearConstraint] = []
+        if feasible_disp:
+            num_fd = len(feasible_disp)
+            A_disp = np.zeros((num_fd, num_vars))
+            for row_idx, loc_id in enumerate(feasible_disp):
+                for col_idx in c_disp[loc_id]:
+                    A_disp[row_idx, col_idx] = 1.0
+            constraints.append(LinearConstraint(A_disp, np.ones(num_fd), np.full(num_fd, np.inf)))
+
+        if feasible_rec:
+            num_fr = len(feasible_rec)
+            A_rec = np.zeros((num_fr, num_vars))
+            for row_idx, loc_id in enumerate(feasible_rec):
+                for col_idx in c_rec[loc_id]:
+                    A_rec[row_idx, m + col_idx] = 1.0
+            constraints.append(LinearConstraint(A_rec, np.ones(num_fr), np.full(num_fr, np.inf)))
+
+        # 2. Linking constraints: z_{j,D} - y_j <= 0, z_{j,R} - y_j <= 0
+        A_link = np.zeros((2 * m, num_vars))
+        for j in range(m):
+            A_link[j, j] = 1.0
+            A_link[j, 2 * m + j] = -1.0
+            A_link[m + j, m + j] = 1.0
+            A_link[m + j, 2 * m + j] = -1.0
+        constraints.append(LinearConstraint(A_link, np.full(2 * m, -np.inf), np.zeros(2 * m)))
+
+        # 3. Spacing constraints: y_j + y_k <= 1
         if conflict_pairs:
             num_conf = len(conflict_pairs)
-            A_conf = np.zeros((num_conf, m))
+            A_conf = np.zeros((num_conf, num_vars))
             for row_idx, (j, k) in enumerate(conflict_pairs):
-                A_conf[row_idx, j] = 1.0
-                A_conf[row_idx, k] = 1.0
-            conf_constraint = LinearConstraint(A_conf, np.full(num_conf, -np.inf), np.ones(num_conf))
-            constraints.append(conf_constraint)
+                A_conf[row_idx, 2 * m + j] = 1.0
+                A_conf[row_idx, 2 * m + k] = 1.0
+            constraints.append(LinearConstraint(A_conf, np.full(num_conf, -np.inf), np.ones(num_conf)))
+
+        # Stage 1 cost: minimize physical bins + small tie-breaker for stations
+        c_stage1 = np.zeros(num_vars)
+        c_stage1[0 : 2 * m] = 1.0
+        c_stage1[2 * m : 3 * m] = 1e-4
 
         res1 = milp(c=c_stage1, integrality=integrality, constraints=constraints, bounds=bounds)
 
         if res1.success:
-            min_bins = int(round(float(np.sum(res1.x))))
+            min_physical_bins = int(round(float(np.sum(res1.x[0 : 2 * m]))))
 
-            # Stage 2: Maximize route popularity constrained to sum(z_j) == min_bins
-            bin_count_constraint = LinearConstraint(
-                np.ones((1, m)), np.array([min_bins]), np.array([min_bins])
+            # Stage 2: Constrain sum of physical bins == min_physical_bins
+            A_bin = np.zeros((1, num_vars))
+            A_bin[0, 0 : 2 * m] = 1.0
+            bin_constraint = LinearConstraint(
+                A_bin, np.array([float(min_physical_bins)]), np.array([float(min_physical_bins)])
             )
-            stage2_constraints = list(constraints) + [bin_count_constraint]
+            stage2_constraints = list(constraints) + [bin_constraint]
 
+            # Stage 2 objective: Maximize route popularity while preferring fewer physical stations
             scores = np.array([c.normalized_popularity_score for c in candidates])
-            # Deterministic secondary tie-breaker bonus: lower candidate index favored
             eps = np.array([(m - j) / (m * 1e5) for j in range(m)])
-            c_stage2 = -(scores + eps)
+            w = scores + eps
+            c_stage2 = np.zeros(num_vars)
+            c_stage2[0 : m] = -w
+            c_stage2[m : 2 * m] = -w
+            c_stage2[2 * m : 3 * m] = 1e-3  # Positive penalty to prefer fewer stations (co-location)
 
-            res2 = milp(
-                c=c_stage2, integrality=integrality, constraints=stage2_constraints, bounds=bounds
-            )
+            res2 = milp(c=c_stage2, integrality=integrality, constraints=stage2_constraints, bounds=bounds)
             if res2.success:
-                selected_indices = [j for j, val in enumerate(res2.x) if val > 0.5]
-                return selected_indices, True, "scipy_milp_highs", []
+                selected: list[tuple[int, list[str]]] = []
+                for j in range(m):
+                    streams: list[str] = []
+                    if res2.x[j] > 0.5:
+                        streams.append("Disposable")
+                    if res2.x[m + j] > 0.5:
+                        streams.append("Recyclable")
+                    if streams:
+                        selected.append((j, streams))
+                return selected, True, "scipy_milp_highs", []
 
-        # If Stage 1 is infeasible due to spacing conflicts, fall back and record warning
-        selected_indices, _, _, fallback_warnings = _solve_greedy_fallback(
-            candidates, feasible_loc_ids, road_bin_spacing_m
+        # If Stage 1 infeasible due to spacing conflicts, fall back and record warning
+        selected, _, _, fallback_warnings = _solve_greedy_fallback(
+            candidates, feasible_disp, feasible_rec, conflict_pairs, road_bin_spacing_m
         )
         warn_msg = (
             f"Spacing conflict prevents simultaneous coverage for all locations under the "
             f"{road_bin_spacing_m}m spacing rule; returning best valid partial coverage."
         )
-        return selected_indices, False, "greedy_fallback_due_to_conflicts", [warn_msg] + fallback_warnings
+        return selected, False, "greedy_fallback_due_to_conflicts", [warn_msg] + fallback_warnings
 
     # Fallback heuristic
-    return _solve_greedy_fallback(candidates, feasible_loc_ids, road_bin_spacing_m)
+    return _solve_greedy_fallback(
+        candidates, feasible_disp, feasible_rec, conflict_pairs, road_bin_spacing_m
+    )
 
 
 def predict_road_bins(
@@ -1281,11 +1725,12 @@ def predict_road_bins(
     solver_mode: str = "exact",
     max_candidates_threshold: int = 2500,
 ) -> RoadBinPrediction:
-    """Predict and optimize road-bin placements along pedestrian roads.
+    """Predict and optimize road-bin placements along pedestrian roads with waste-stream awareness.
 
-    Minimizes the number of additional physical road bins while ensuring that
-    each activity location has eligible road-bin coverage within its
-    waste-type-specific influence zone.
+    Determines Disposable and Recyclable coverage requirements independently per location,
+    generates candidate points along mapped pedestrian roads, enforces 25 m minimum corridor
+    spacing between consecutive placements along the same road, and minimizes physical bin units
+    while maximizing route popularity.
     """
     if not location_geometries:
         raise ValueError("At least one location geometry is required for road bin prediction.")
@@ -1304,19 +1749,37 @@ def predict_road_bins(
     loc_names_map = dict(location_names or {})
     warnings: list[str] = []
 
-    # 1. Determine dominant waste type & influence radius per location
-    dominant_types: dict[str, str] = {}
-    radii_m: dict[str, float] = {}
+    # 1. Determine dominant waste types & influence radii independently per stream
+    stream_reqs: dict[str, dict[str, Any]] = {}
+    dominant_types_overall: dict[str, str] = {}
+    radii_m_overall: dict[str, float] = {}
+    dominant_types_by_stream: dict[str, dict[str, str]] = {}
+    radii_m_by_stream: dict[str, dict[str, float]] = {}
+
     for loc_id in location_geometries:
         loc_display = loc_names_map.get(loc_id, loc_id)
         if loc_id not in waste_compositions and loc_display not in waste_compositions:
             raise ValueError(f"Missing waste composition profile for location {loc_id!r}.")
 
         comp = waste_compositions.get(loc_id, waste_compositions.get(loc_display))
-        dom_cat, _ = determine_dominant_waste_type(comp)
-        radius = get_influence_radius_m(dom_cat, active_radii)
-        dominant_types[loc_id] = dom_cat
-        radii_m[loc_id] = radius
+        s_data = determine_stream_dominant_waste_types(comp, active_radii)
+        stream_reqs[loc_id] = s_data
+
+        dom_disp = s_data["disposable"]["dominant_category"]
+        rad_disp = s_data["disposable"]["radius_m"]
+        dom_rec = s_data["recyclable"]["dominant_category"]
+        rad_rec = s_data["recyclable"]["radius_m"]
+
+        dominant_types_by_stream[loc_id] = {
+            "Disposable": dom_disp,
+            "Recyclable": dom_rec,
+        }
+        radii_m_by_stream[loc_id] = {
+            "Disposable": rad_disp,
+            "Recyclable": rad_rec,
+        }
+        dominant_types_overall[loc_id] = s_data["overall"]["dominant_category"]
+        radii_m_overall[loc_id] = s_data["overall"]["radius_m"]
 
     # 2. Parse and validate location geometries in WGS84
     locations_wgs84: dict[str, Polygon | MultiPolygon] = {}
@@ -1342,7 +1805,6 @@ def predict_road_bins(
     forward = Transformer.from_crs(CRS.from_epsg(4326), local_crs, always_xy=True)
     inverse = Transformer.from_crs(local_crs, CRS.from_epsg(4326), always_xy=True)
 
-    # Project geometries to metric
     locations_m: dict[str, Polygon | MultiPolygon] = {
         loc_id: transform(lambda x, y, z=None: forward.transform(x, y), geom)
         for loc_id, geom in locations_wgs84.items()
@@ -1353,14 +1815,30 @@ def predict_road_bins(
         else None
     )
 
-    # 4. Construct influence zones in metric space: I_i = B_i ⊕ D(r_i)
-    influence_zones_m: dict[str, Polygon | MultiPolygon] = {
-        loc_id: construct_influence_zone_m(locations_m[loc_id], radii_m[loc_id])
-        for loc_id in locations_m
-    }
-    union_zones_m = unary_union(list(influence_zones_m.values()))
+    # 4. Construct stream-specific influence zones in metric space: I_i^s = B_i ⊕ D(r_i^s)
+    active_stream_zones_m: list[Polygon | MultiPolygon] = []
+    for loc_id, loc_shape_m in locations_m.items():
+        s_info = stream_reqs[loc_id]
+        if s_info["disposable"]["requires_coverage"]:
+            active_stream_zones_m.append(
+                construct_influence_zone_m(loc_shape_m, s_info["disposable"]["radius_m"])
+            )
+        if s_info["recyclable"]["requires_coverage"]:
+            active_stream_zones_m.append(
+                construct_influence_zone_m(loc_shape_m, s_info["recyclable"]["radius_m"])
+            )
 
-    # 5. Extract mapped pedestrian roads and intersect with influence zones
+    if not active_stream_zones_m:
+        # If no stream requires coverage, fallback to overall radii
+        for loc_id, loc_shape_m in locations_m.items():
+            active_stream_zones_m.append(
+                construct_influence_zone_m(loc_shape_m, radii_m_overall[loc_id])
+            )
+
+    union_zones_m = unary_union(active_stream_zones_m)
+
+    # 5. Extract mapped pedestrian roads and build corridor graph
+    corridor_graph = RoadCorridorGraph()
     features: list[dict[str, Any]] = []
     if isinstance(paths_geojson, Mapping):
         features = list(paths_geojson.get("features", []))
@@ -1370,7 +1848,6 @@ def predict_road_bins(
     raw_candidate_points: list[dict[str, Any]] = []
     for feat_idx, feat in enumerate(features):
         props = feat.get("properties") or {}
-        # Exclude inferred connectors or unmapped lines
         provenance = props.get("provenance", "osm_mapped")
         if provenance != "osm_mapped":
             continue
@@ -1395,6 +1872,9 @@ def predict_road_bins(
             if road_m.is_empty:
                 continue
 
+        for orig_subline in _extract_linestrings_m(road_m):
+            corridor_graph.add_segment(seg_id, orig_subline, props)
+
         road_in_zones_m = road_m.intersection(union_zones_m)
         if road_in_zones_m.is_empty:
             continue
@@ -1407,6 +1887,8 @@ def predict_road_bins(
         if not math.isfinite(norm_score) or norm_score < 0:
             norm_score = 0.0
         norm_score = min(1.0, norm_score)
+
+        orig_seg_geom = corridor_graph.segments.get(seg_id)
 
         for line in sub_lines:
             line_len = float(line.length)
@@ -1422,10 +1904,12 @@ def predict_road_bins(
 
             for d in distances:
                 pt = line.interpolate(d)
+                along_offset = float(orig_seg_geom.project(pt)) if orig_seg_geom is not None else float(d)
                 raw_candidate_points.append(
                     {
                         "point": pt,
                         "segment_id": seg_id,
+                        "along_offset": along_offset,
                         "normalized_score": norm_score,
                     }
                 )
@@ -1434,16 +1918,20 @@ def predict_road_bins(
         for orig_line in _extract_linestrings_m(road_m):
             for endpt in (orig_line.interpolate(0.0), orig_line.interpolate(orig_line.length)):
                 if union_zones_m.covers(endpt) or union_zones_m.distance(endpt) < 1e-5:
+                    along_offset = float(orig_seg_geom.project(endpt)) if orig_seg_geom is not None else 0.0
                     raw_candidate_points.append(
                         {
                             "point": endpt,
                             "segment_id": seg_id,
+                            "along_offset": along_offset,
                             "normalized_score": norm_score,
                         }
                     )
 
+    # Build corridor topology across connected contiguous segments
+    corridor_graph.build_topology()
+
     # 6. Deduplicate coincident / adjacent candidates (within 0.5 m)
-    # Aggregates junction popularity to maximum incident score
     sorted_raw = sorted(
         raw_candidate_points,
         key=lambda item: (round(item["point"].x, 3), round(item["point"].y, 3), item["segment_id"]),
@@ -1465,7 +1953,6 @@ def predict_road_bins(
     cand_distances: dict[str, dict[str, float]] = {}
 
     for cand_idx, cluster in enumerate(deduped_clusters, start=1):
-        # Best item has highest score, deterministic tie-break by segment_id
         best_item = sorted(
             cluster, key=lambda it: (-it["normalized_score"], str(it["segment_id"]))
         )[0]
@@ -1473,14 +1960,54 @@ def predict_road_bins(
         max_score = max(it["normalized_score"] for it in cluster)
         source_segment = str(best_item["segment_id"])
 
-        # Determine which location influence zones contain this point
+        # Merge attachments from all cluster items
+        attachments_dict: dict[str, float] = {}
+        for it in cluster:
+            s_id = str(it["segment_id"])
+            attachments_dict[s_id] = float(it["along_offset"])
+
+        # Also attach any contiguous segment whose start or end is within 0.5 m of this point
+        for s_id, s_line in corridor_graph.segments.items():
+            if s_id not in attachments_dict:
+                p_start = s_line.interpolate(0.0)
+                p_end = s_line.interpolate(s_line.length)
+                if pt.distance(p_start) <= 0.5:
+                    attachments_dict[s_id] = 0.0
+                elif pt.distance(p_end) <= 0.5:
+                    attachments_dict[s_id] = float(s_line.length)
+
+        # Determine which location influence zones contain this point per stream
+        eligible_disp_ids: list[str] = []
+        eligible_rec_ids: list[str] = []
         served_ids: list[str] = []
         dists_m: dict[str, float] = {}
+
         for loc_id, loc_shape_m in locations_m.items():
             dist = float(loc_shape_m.distance(pt))
-            if dist <= radii_m[loc_id] + 1e-4:
-                served_ids.append(loc_id)
-                dists_m[loc_id] = round(dist, 2)
+            s_info = stream_reqs[loc_id]
+
+            # Disposable eligibility
+            if s_info["disposable"]["requires_coverage"] and dist <= s_info["disposable"]["radius_m"] + 1e-4:
+                eligible_disp_ids.append(loc_id)
+                if loc_id not in served_ids:
+                    served_ids.append(loc_id)
+                    dists_m[loc_id] = round(dist, 2)
+
+            # Recyclable eligibility
+            if s_info["recyclable"]["requires_coverage"] and dist <= s_info["recyclable"]["radius_m"] + 1e-4:
+                eligible_rec_ids.append(loc_id)
+                if loc_id not in served_ids:
+                    served_ids.append(loc_id)
+                    dists_m[loc_id] = round(dist, 2)
+
+            # Legacy fallback if neither stream explicitly requires coverage
+            if not s_info["disposable"]["requires_coverage"] and not s_info["recyclable"]["requires_coverage"]:
+                if dist <= radii_m_overall[loc_id] + 1e-4:
+                    eligible_disp_ids.append(loc_id)
+                    eligible_rec_ids.append(loc_id)
+                    if loc_id not in served_ids:
+                        served_ids.append(loc_id)
+                        dists_m[loc_id] = round(dist, 2)
 
         if not served_ids:
             continue
@@ -1488,6 +2015,8 @@ def predict_road_bins(
         lon, lat = inverse.transform(pt.x, pt.y)
         cand_id = f"road-cand-{cand_idx:04d}"
         cand_distances[cand_id] = dists_m
+
+        attachments_tuple = tuple(sorted(attachments_dict.items()))
 
         eligible_candidates.append(
             RoadBinCandidate(
@@ -1499,29 +2028,58 @@ def predict_road_bins(
                 source_segment_id=source_segment,
                 normalized_popularity_score=round(max_score, 4),
                 served_location_ids=tuple(sorted(served_ids)),
+                eligible_disposable_location_ids=tuple(sorted(eligible_disp_ids)),
+                eligible_recyclable_location_ids=tuple(sorted(eligible_rec_ids)),
+                segment_attachments=attachments_tuple,
             )
         )
 
-    # Check for locations with no feasible candidates
+    # 7. Check for locations with no feasible candidates per stream
     all_loc_ids = sorted(location_geometries.keys())
-    for loc_id in all_loc_ids:
+    req_disp_locs = [
+        loc_id for loc_id in all_loc_ids if stream_reqs[loc_id]["disposable"]["requires_coverage"]
+    ]
+    req_rec_locs = [
+        loc_id for loc_id in all_loc_ids if stream_reqs[loc_id]["recyclable"]["requires_coverage"]
+    ]
+
+    for loc_id in req_disp_locs:
         loc_display = loc_names_map.get(loc_id, loc_id)
-        if not any(loc_id in c.served_location_ids for c in eligible_candidates):
+        if not any(loc_id in c.eligible_disposable_location_ids for c in eligible_candidates):
+            rad = stream_reqs[loc_id]["disposable"]["radius_m"]
             warnings.append(
-                f"Location {loc_display!r} ({loc_id}) has no feasible road candidate. "
-                f"No mapped pedestrian road intersects its {radii_m[loc_id]}m influence zone."
+                f"Location {loc_display!r} ({loc_id}) has no feasible road candidate for Disposable stream. "
+                f"No mapped pedestrian road intersects its {rad}m Disposable influence zone."
             )
 
+    for loc_id in req_rec_locs:
+        loc_display = loc_names_map.get(loc_id, loc_id)
+        if not any(loc_id in c.eligible_recyclable_location_ids for c in eligible_candidates):
+            rad = stream_reqs[loc_id]["recyclable"]["radius_m"]
+            warnings.append(
+                f"Location {loc_display!r} ({loc_id}) has no feasible road candidate for Recyclable stream. "
+                f"No mapped pedestrian road intersects its {rad}m Recyclable influence zone."
+            )
+
+    # Build spacing conflict pairs based on along-corridor distances
+    conflict_pairs = find_spacing_conflict_pairs(
+        eligible_candidates, corridor_graph, road_bin_spacing_m
+    )
+
     if not eligible_candidates:
+        uncovered_disp = tuple(req_disp_locs)
+        uncovered_rec = tuple(req_rec_locs)
+        uncovered_all = tuple(sorted(set(req_disp_locs) | set(req_rec_locs)) or all_loc_ids)
+
         return RoadBinPrediction(
             placements=(),
             total_physical_bins=0,
             total_eligible_candidates=0,
             total_locations_requiring_coverage=len(all_loc_ids),
             covered_location_ids=(),
-            uncovered_location_ids=tuple(all_loc_ids),
-            location_influence_radii_m=radii_m,
-            location_dominant_waste_types=dominant_types,
+            uncovered_location_ids=uncovered_all,
+            location_influence_radii_m=radii_m_overall,
+            location_dominant_waste_types=dominant_types_overall,
             candidate_sampling_interval_m=float(candidate_sampling_interval_m),
             road_bin_spacing_m=float(road_bin_spacing_m),
             solver_name="no_candidates",
@@ -1529,24 +2087,39 @@ def predict_road_bins(
             total_popularity_score=0.0,
             warnings=tuple(warnings),
             assumptions=(
-                "Influence radii are determined by the location's dominant waste category (Food: 15m, Glass: 15m, Others: 20m, Paper: 25m, Plastic: 25m).",
+                "Waste-specific influence radii are configured as Food: 100m, Glass: 100m, Others: 125m, Paper: 150m, Plastic: 150m.",
+                "Influence radii are determined independently for Disposable (Food, Others) and Recyclable (Glass, Paper, Plastic) waste streams.",
                 "Influence zones extend outward from the entire activity polygon boundary, not from centroids.",
                 "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
                 "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
-                "Optimization minimizes the total count of additional physical road bins while ensuring eligible road coverage for each activity location.",
-                "Pairwise minimum spacing constraints (default 25m) prevent excessive road-bin placement density.",
+                "Optimization minimizes the total count of additional physical road-bin units while satisfying stream-specific coverage requirements.",
+                "A 25m minimum spacing policy is enforced between consecutive placements along the same continuous road corridor.",
+                "Both streams may be co-located at the same road station coordinate without violating spacing.",
                 "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
-                "Each selected road placement represents a dual-compartment station accepting both Disposable and Recyclable waste streams.",
             ),
+            total_stations=0,
+            total_disposable_physical_bins=0,
+            total_recyclable_physical_bins=0,
+            covered_disposable_location_ids=(),
+            covered_recyclable_location_ids=(),
+            uncovered_disposable_location_ids=uncovered_disp,
+            uncovered_recyclable_location_ids=uncovered_rec,
+            location_dominant_waste_types_by_stream=dominant_types_by_stream,
+            location_influence_radii_m_by_stream=radii_m_by_stream,
+            location_stream_coverage_status={
+                lid: {"Disposable": False, "Recyclable": False} for lid in all_loc_ids
+            },
+            spacing_validation_passed=True,
+            spacing_violations=(),
             diagnostics={
                 "candidate_count": 0,
                 "coverage_matrix_size": 0,
                 "conflict_count": 0,
-                "uncovered_count": len(all_loc_ids),
+                "uncovered_count": len(uncovered_all),
             },
         )
 
-    # 7. Candidate threshold safety check
+    # 8. Candidate threshold safety check
     active_candidates = eligible_candidates
     if len(eligible_candidates) > max_candidates_threshold:
         warnings.append(
@@ -1555,48 +2128,112 @@ def predict_road_bins(
         )
         solver_mode = "fallback"
 
-    # 8. Solve minimum-bin optimization with spacing and route-popularity tie breaking
-    selected_indices, optimality_proven, solver_name, solver_warnings = _solve_road_bin_placement(
+    # 9. Solve minimum-bin optimization with spacing and route-popularity tie breaking
+    selected_assignments, optimality_proven, solver_name, solver_warnings = _solve_road_bin_placement(
         candidates=active_candidates,
-        location_ids=all_loc_ids,
+        location_ids_disposable=req_disp_locs or all_loc_ids,
+        location_ids_recyclable=req_rec_locs or all_loc_ids,
+        conflict_pairs=conflict_pairs,
         road_bin_spacing_m=road_bin_spacing_m,
         solver_mode=solver_mode,
     )
     warnings.extend(solver_warnings)
 
-    # 9. Build placements
+    # 10. Build placements
     placements: list[RoadBinPlacement] = []
-    for p_idx, cand_idx in enumerate(sorted(selected_indices), start=1):
-        cand = active_candidates[cand_idx]
-        served_names = tuple(loc_names_map.get(lid, lid) for lid in cand.served_location_ids)
-        placements.append(
-            RoadBinPlacement(
-                placement_id=f"road-bin-{p_idx}",
-                longitude=cand.longitude,
-                latitude=cand.latitude,
-                source_segment_id=cand.source_segment_id,
-                normalized_popularity_score=cand.normalized_popularity_score,
-                served_location_ids=cand.served_location_ids,
-                served_location_names=served_names,
-                served_location_distances_m=dict(cand_distances.get(cand.candidate_id, {})),
-                stream_type="Dual-compartment station",
-                provenance="road_bin_optimizer",
-            )
-        )
+    placement_attachments: dict[str, Any] = {}
 
-    covered_ids = tuple(sorted(set(lid for p in placements for lid in p.served_location_ids)))
-    uncovered_ids = tuple(sorted(set(all_loc_ids) - set(covered_ids)))
+    for p_idx, (cand_idx, streams) in enumerate(selected_assignments, start=1):
+        cand = active_candidates[cand_idx]
+        stream_types = tuple(streams)
+        if len(stream_types) == 2:
+            stream_type_str = "Disposable & Recyclable"
+        elif stream_types:
+            stream_type_str = stream_types[0]
+        else:
+            stream_type_str = "Unknown"
+
+        disp_served = tuple(
+            sorted(lid for lid in cand.eligible_disposable_location_ids if lid in location_geometries)
+        ) if "Disposable" in stream_types else ()
+
+        rec_served = tuple(
+            sorted(lid for lid in cand.eligible_recyclable_location_ids if lid in location_geometries)
+        ) if "Recyclable" in stream_types else ()
+
+        all_served = tuple(sorted(set(disp_served) | set(rec_served)))
+        served_names = tuple(loc_names_map.get(lid, lid) for lid in all_served)
+
+        p_id = f"road-bin-{p_idx}"
+        placement = RoadBinPlacement(
+            placement_id=p_id,
+            longitude=cand.longitude,
+            latitude=cand.latitude,
+            source_segment_id=cand.source_segment_id,
+            normalized_popularity_score=cand.normalized_popularity_score,
+            served_location_ids=all_served,
+            served_location_names=served_names,
+            served_location_distances_m=dict(cand_distances.get(cand.candidate_id, {})),
+            stream_type=stream_type_str,
+            stream_types=stream_types,
+            served_disposable_location_ids=disp_served,
+            served_recyclable_location_ids=rec_served,
+            physical_bin_count=len(stream_types),
+            provenance="road_bin_optimizer",
+        )
+        placements.append(placement)
+        placement_attachments[p_id] = cand.segment_attachments
+
+    # 11. Validate spacing on final selected placements
+    spacing_ok, spacing_violations = validate_road_bin_spacing(
+        placements, corridor_graph, placement_attachments, road_bin_spacing_m
+    )
+    warnings.extend(spacing_violations)
+
+    # 12. Calculate coverage and summary diagnostics
+    covered_disp_ids = tuple(
+        sorted(set(lid for p in placements for lid in p.served_disposable_location_ids))
+    )
+    uncovered_disp_ids = tuple(sorted(set(req_disp_locs) - set(covered_disp_ids)))
+
+    covered_rec_ids = tuple(
+        sorted(set(lid for p in placements for lid in p.served_recyclable_location_ids))
+    )
+    uncovered_rec_ids = tuple(sorted(set(req_rec_locs) - set(covered_rec_ids)))
+
+    coverage_status_by_loc: dict[str, dict[str, bool]] = {}
+    covered_all_ids: list[str] = []
+    uncovered_all_ids: list[str] = []
+
+    for lid in all_loc_ids:
+        req_d = stream_reqs[lid]["disposable"]["requires_coverage"]
+        req_r = stream_reqs[lid]["recyclable"]["requires_coverage"]
+        is_cov_d = lid in covered_disp_ids if req_d else True
+        is_cov_r = lid in covered_rec_ids if req_r else True
+        coverage_status_by_loc[lid] = {
+            "Disposable": is_cov_d,
+            "Recyclable": is_cov_r,
+        }
+        if is_cov_d and is_cov_r:
+            covered_all_ids.append(lid)
+        else:
+            uncovered_all_ids.append(lid)
+
+    total_disp_bins = sum(1 for p in placements if "Disposable" in p.stream_types)
+    total_rec_bins = sum(1 for p in placements if "Recyclable" in p.stream_types)
+    total_physical_bins = total_disp_bins + total_rec_bins
+    total_stations = len(placements)
     total_popularity = round(sum(p.normalized_popularity_score for p in placements), 4)
 
     return RoadBinPrediction(
         placements=tuple(placements),
-        total_physical_bins=len(placements),
+        total_physical_bins=total_physical_bins,
         total_eligible_candidates=len(active_candidates),
         total_locations_requiring_coverage=len(all_loc_ids),
-        covered_location_ids=covered_ids,
-        uncovered_location_ids=uncovered_ids,
-        location_influence_radii_m=radii_m,
-        location_dominant_waste_types=dominant_types,
+        covered_location_ids=tuple(sorted(covered_all_ids)),
+        uncovered_location_ids=tuple(sorted(uncovered_all_ids)),
+        location_influence_radii_m=radii_m_overall,
+        location_dominant_waste_types=dominant_types_overall,
         candidate_sampling_interval_m=float(candidate_sampling_interval_m),
         road_bin_spacing_m=float(road_bin_spacing_m),
         solver_name=solver_name,
@@ -1604,20 +2241,42 @@ def predict_road_bins(
         total_popularity_score=total_popularity,
         warnings=tuple(warnings),
         assumptions=(
-            "Influence radii are determined by the location's dominant waste category (Food: 15m, Glass: 15m, Others: 20m, Paper: 25m, Plastic: 25m).",
+            "Waste-specific influence radii are configured as Food: 100m, Glass: 100m, Others: 125m, Paper: 150m, Plastic: 150m.",
+            "Influence radii are determined independently for Disposable (Food, Others) and Recyclable (Glass, Paper, Plastic) waste streams.",
             "Influence zones extend outward from the entire activity polygon boundary, not from centroids.",
             "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
             "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
-            "Optimization minimizes the total count of additional physical road bins while ensuring eligible road coverage for each activity location.",
-            "Pairwise minimum spacing constraints (default 25m) prevent excessive road-bin placement density.",
+            "Optimization minimizes the total count of additional physical road-bin units while satisfying stream-specific coverage requirements.",
+            "A 25m minimum spacing policy is enforced between consecutive placements along the same continuous road corridor.",
+            "Both streams may be co-located at the same road station coordinate without violating spacing.",
             "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
-            "Each selected road placement represents a dual-compartment station accepting both Disposable and Recyclable waste streams.",
         ),
+        total_stations=total_stations,
+        total_disposable_physical_bins=total_disp_bins,
+        total_recyclable_physical_bins=total_rec_bins,
+        covered_disposable_location_ids=covered_disp_ids,
+        covered_recyclable_location_ids=covered_rec_ids,
+        uncovered_disposable_location_ids=uncovered_disp_ids,
+        uncovered_recyclable_location_ids=uncovered_rec_ids,
+        location_dominant_waste_types_by_stream=dominant_types_by_stream,
+        location_influence_radii_m_by_stream=radii_m_by_stream,
+        location_stream_coverage_status=coverage_status_by_loc,
+        spacing_validation_passed=spacing_ok,
+        spacing_violations=tuple(spacing_violations),
         diagnostics={
             "candidate_count": len(active_candidates),
             "selected_count": len(placements),
-            "uncovered_count": len(uncovered_ids),
+            "total_physical_bins": total_physical_bins,
+            "total_stations": total_stations,
+            "disposable_bins": total_disp_bins,
+            "recyclable_bins": total_rec_bins,
+            "conflict_count": len(conflict_pairs),
+            "uncovered_count": len(uncovered_all_ids),
+            "uncovered_disposable_count": len(uncovered_disp_ids),
+            "uncovered_recyclable_count": len(uncovered_rec_ids),
             "solver_name": solver_name,
             "optimality_proven": optimality_proven,
+            "spacing_validation_passed": spacing_ok,
         },
     )
+

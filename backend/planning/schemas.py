@@ -249,7 +249,20 @@ class RoadBinPlacementMarker(BaseModel):
     served_location_distances_m: dict[str, float] = Field(
         default_factory=dict, description="Distance from served location footprint boundary in metres"
     )
-    stream_type: str = Field(default="Dual-compartment station", description="Stream or station configuration")
+    stream_type: str = Field(default="Dual-compartment station", description="Stream or station configuration string")
+    stream_types: list[str] = Field(
+        default_factory=lambda: ["Disposable", "Recyclable"],
+        description="Explicit assigned stream types, e.g. ['Disposable'], ['Recyclable'], or both",
+    )
+    served_disposable_location_ids: list[str] = Field(
+        default_factory=list, description="Location IDs served for Disposable stream"
+    )
+    served_recyclable_location_ids: list[str] = Field(
+        default_factory=list, description="Location IDs served for Recyclable stream"
+    )
+    physical_bin_count: int = Field(
+        default=1, description="Number of physical bin units at this station"
+    )
     provenance: str = Field(default="road_bin_optimizer", description="Placement provenance")
 
 
@@ -257,15 +270,43 @@ class RoadBinRecommendationResponse(BaseModel):
     """Output from influence-based road-bin placement optimizer."""
 
     total_road_bins: int = Field(..., description="Total selected physical road bins")
+    total_stations: Optional[int] = Field(default=None, description="Total distinct road placement stations")
+    total_disposable_physical_bins: Optional[int] = Field(
+        default=None, description="Total Disposable physical bins assigned"
+    )
+    total_recyclable_physical_bins: Optional[int] = Field(
+        default=None, description="Total Recyclable physical bins assigned"
+    )
     total_eligible_candidates: int = Field(..., description="Total eligible candidate points generated")
     total_locations_requiring_coverage: int = Field(..., description="Total activity locations requiring road coverage")
     covered_location_ids: list[str] = Field(default_factory=list, description="IDs of locations covered")
     uncovered_location_ids: list[str] = Field(default_factory=list, description="IDs of uncovered locations")
+    covered_disposable_location_ids: list[str] = Field(
+        default_factory=list, description="IDs of locations covered for Disposable stream"
+    )
+    covered_recyclable_location_ids: list[str] = Field(
+        default_factory=list, description="IDs of locations covered for Recyclable stream"
+    )
+    uncovered_disposable_location_ids: list[str] = Field(
+        default_factory=list, description="IDs of locations requiring but lacking Disposable coverage"
+    )
+    uncovered_recyclable_location_ids: list[str] = Field(
+        default_factory=list, description="IDs of locations requiring but lacking Recyclable coverage"
+    )
     location_influence_radii_m: dict[str, float] = Field(
-        default_factory=dict, description="Influence radius assigned per location in metres"
+        default_factory=dict, description="Influence radius assigned per location in metres (overall dominant)"
     )
     location_dominant_waste_types: dict[str, str] = Field(
-        default_factory=dict, description="Dominant waste type assigned per location"
+        default_factory=dict, description="Dominant waste type assigned per location (overall dominant)"
+    )
+    location_dominant_waste_types_by_stream: dict[str, dict[str, str]] = Field(
+        default_factory=dict, description="Dominant waste category per stream per location"
+    )
+    location_influence_radii_m_by_stream: dict[str, dict[str, float]] = Field(
+        default_factory=dict, description="Influence radius in metres per stream per location"
+    )
+    location_stream_coverage_status: dict[str, dict[str, bool]] = Field(
+        default_factory=dict, description="Coverage satisfaction per stream per location"
     )
     candidate_sampling_interval_m: float = Field(default=5.0, description="Sampling interval in metres")
     road_bin_spacing_m: float = Field(default=25.0, description="Minimum spacing policy in metres")
@@ -274,6 +315,9 @@ class RoadBinRecommendationResponse(BaseModel):
     total_popularity_score: float = Field(default=0.0, description="Total popularity score of selected placements")
     placements: list[RoadBinPlacementMarker] = Field(
         default_factory=list, description="Selected road-bin placements"
+    )
+    spacing_validation_passed: bool = Field(
+        default=True, description="True if all placements satisfy the spacing policy"
     )
     warnings: list[str] = Field(default_factory=list, description="Road-bin placement warnings")
     assumptions: list[str] = Field(default_factory=list, description="Model physical assumptions")
