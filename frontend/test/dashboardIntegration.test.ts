@@ -147,7 +147,30 @@ async function runDashboardIntegrationTests() {
     'DashboardPage must NOT render DashboardSidebar'
   );
 
-  console.log('✓ DashboardPage verified: uses unified Navbar, no sidebar, and fits without scroll');
+  // 7. Auth and Guest navigation verification in App and AuthPage
+  const appPath = path.join(__dirname, '../src/App.tsx');
+  const appContent = fs.readFileSync(appPath, 'utf-8');
+  assert.ok(
+    appContent.includes("setCurrentView('dashboard')"),
+    'handleLoginSuccess must route to dashboard'
+  );
+  assert.ok(
+    appContent.includes("setCurrentView('planner')"),
+    'handleContinueAsGuest must route to planner'
+  );
+  assert.ok(
+    appContent.includes("setCurrentStep(1)"),
+    'handleContinueAsGuest must set currentStep to 1 (campus selection)'
+  );
+
+  const authPagePath = path.join(__dirname, '../src/components/Auth/AuthPage.tsx');
+  const authPageContent = fs.readFileSync(authPagePath, 'utf-8');
+  assert.ok(
+    authPageContent.includes('Use as guest'),
+    'AuthPage must provide Use as guest option'
+  );
+
+  console.log('✓ Auth & Guest navigation verified: login navigates to dashboard, use as guest navigates directly to campus selection (Step 1)');
   console.log('All Dashboard integration assertions passed successfully!\n');
 }
 

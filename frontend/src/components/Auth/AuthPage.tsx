@@ -48,7 +48,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         name:
           authMode === "signup" && combinedName
             ? combinedName
-            : "Aarav Sharma",
+            : email.trim()
+              ? email
+                  .split("@")[0]
+                  .replace(/[._-]/g, " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase())
+              : "Aarav Sharma",
         email: email.trim() || "aarav.sharma@university.edu",
         role: "Sustainability Lead",
       });
@@ -326,7 +331,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 onClick={onContinueAsGuest}
                 className="text-[11px] font-semibold text-[#667267] hover:text-[#094120] hover:underline cursor-pointer"
               >
-                Explore campus planner as Guest →
+                Use as guest →
               </button>
             </div>
           )}

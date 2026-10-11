@@ -375,6 +375,18 @@ export default function App() {
     };
     setUser(guestUser);
     setCurrentStep(1);
+    setSelectedCampus(null);
+    setLocations([]);
+    setEntryGate(null);
+    setSelectedLocationId(null);
+    setPredictionResult(null);
+    setBinRecommendations(null);
+    setRoadBinRecommendations(null);
+    setRouteResult(null);
+    setPlanningError(null);
+    setRoutesError(null);
+    setIsPlanStale(false);
+    setStep1Completed(false);
     setCurrentView('planner');
   };
 
@@ -444,7 +456,7 @@ export default function App() {
         canGoToPlan={canGoToPlan}
         user={user}
         onLogout={handleLogout}
-        onGoToDashboard={() => setCurrentView('dashboard')}
+        onGoToDashboard={user?.isGuest ? undefined : () => setCurrentView('dashboard')}
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);
