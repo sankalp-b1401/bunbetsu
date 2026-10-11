@@ -45,14 +45,123 @@ def calculate_pair_contribution(weight_a: float, weight_b: float) -> float:
     return math.sqrt(weight_a * weight_b)
 
 
+def calculate_path_length(graph: nx.Graph, path: list[str]) -> float:
+    """Calculate the total metric length of a node sequence in the graph."""
+    length = 0.0
+    for idx in range(len(path) - 1):
+        u, v = path[idx], path[idx + 1]
+        if graph.has_edge(u, v):
+            length += float(graph[u][v].get("length_m", 0.0))
+    return length
+
+
+def find_bounded_alternative_paths(
+    graph: nx.Graph,
+    source: str,
+    target: str,
+    tolerance_m: float = 10.0,
+    max_paths: int = 20,
+) -> tuple[list[list[str]], list[float], bool]:
+    """Discover loopless paths between source and target satisfying length <= L0 + tolerance_m.
+
+    Returns:
+        (paths, lengths, reached_limit): Discovered paths, their lengths, and whether
+        additional eligible paths existed beyond max_paths.
+    """
+    if source == target:
+        return ([[source]], [0.0], False)
+
+    if not (graph.has_node(source) and graph.has_node(target) and nx.has_path(graph, source, target)):
+        return ([], [], False)
+
+    # Fast path for single shortest path (zero tolerance or max_paths == 1)
+    if tolerance_m <= 0.0 or max_paths <= 1:
+        try:
+            sp = nx.shortest_path(graph, source, target, weight="length_m")
+            l0 = calculate_path_length(graph, sp)
+            return ([sp], [l0], False)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return ([], [], False)
+
+    paths: list[list[str]] = []
+    lengths: list[float] = []
+    reached_limit = False
+
+    try:
+        generator = nx.shortest_simple_paths(graph, source, target, weight="length_m")
+        shortest_path = next(generator)
+        l0 = calculate_path_length(graph, shortest_path)
+        paths.append(shortest_path)
+        lengths.append(l0)
+        cutoff = l0 + float(tolerance_m)
+
+        for path in generator:
+            plen = calculate_path_length(graph, path)
+            if plen > cutoff + 1e-9:
+                break
+            paths.append(path)
+            lengths.append(plen)
+            if len(paths) >= max_paths:
+                # Check if there was at least one more path within cutoff
+                try:
+                    next_path = next(generator)
+                    next_len = calculate_path_length(graph, next_path)
+                    if next_len <= cutoff + 1e-9:
+                        reached_limit = True
+                except (StopIteration, nx.NetworkXNoPath):
+                    pass
+                break
+    except (StopIteration, nx.NetworkXNoPath, nx.NodeNotFound):
+        pass
+
+    return (paths, lengths, reached_limit)
+
+
+def calculate_path_shares(
+    lengths: list[float],
+    tolerance_m: float = 10.0,
+    decay_lambda_m: Optional[float] = None,
+) -> list[float]:
+    """Calculate normalized shares p_k for paths using exponential distance decay.
+
+    p_k = exp(-Delta_k / lambda) / sum_j exp(-Delta_j / lambda)
+    where Delta_k = L_k - L_0 >= 0, and sum_k p_k == 1.0.
+    """
+    if not lengths:
+        return []
+    if len(lengths) == 1 or tolerance_m <= 0.0:
+        return [1.0]
+
+    if decay_lambda_m is not None and decay_lambda_m > 0:
+        eff_lambda = float(decay_lambda_m)
+    elif tolerance_m > 0:
+        eff_lambda = float(tolerance_m) / 2.0
+    else:
+        eff_lambda = 1.0
+
+    l0 = lengths[0]
+    preferences = [math.exp(-max(0.0, l - l0) / eff_lambda) for l in lengths]
+    total_pref = sum(preferences)
+
+    if total_pref <= 0.0 or not math.isfinite(total_pref):
+        return [1.0 / len(lengths)] * len(lengths)
+
+    return [p / total_pref for p in preferences]
+
+
 def score_pedestrian_routes(
     graph: nx.Graph,
     locations: list[LocationRouteRequest],
     max_route_pairs: int = 500,
+    alternative_path_tolerance_m: float = 500.0,
+    max_paths_per_pair: int = 20,
+    alternative_path_decay_lambda_m: Optional[float] = None,
 ) -> tuple[nx.Graph, ScoringDiagnostics, list[dict[str, Any]]]:
-    """Calculate shortest pedestrian routes and assign demand-weighted scores to mapped edges.
+    """Calculate alternative pedestrian routes and assign demand-weighted scores to mapped edges.
 
-    Only graph-based shortest paths are used. Inferred connectors are excluded from mapped popularity scores.
+    Discovers bounded loopless paths within alternative_path_tolerance_m of the shortest path,
+    applies exponential distance decay preference weighting, and strictly conserves pair demand.
+    Inferred connectors are excluded from mapped popularity scores.
     """
     # Initialize score on all edges in graph
     for _, _, data in graph.edges(data=True):
@@ -97,51 +206,67 @@ def score_pedestrian_routes(
     else:
         evaluated_pairs = all_pairs
 
-    # 4. Compute shortest paths using reusable single-source Dijkstra trees
-    # Group pairs by source location
-    pairs_by_source: dict[str, list[LocationRouteRequest]] = {}
-    for loc_a, loc_b in evaluated_pairs:
-        pairs_by_source.setdefault(loc_a.id, []).append(loc_b)
-
+    # 4. Compute alternative paths and allocate demand
     connected_pairs_count = 0
     unreachable_pairs_count = 0
     evaluated_pairs_count = len(evaluated_pairs)
+    pairs_with_path_search = 0
+    total_paths_evaluated = 0
+    pairs_with_multiple_paths = 0
+    pairs_reaching_path_limit = 0
 
-    # Edge popularity accumulator: (u, v) -> raw_score
+    # Edge popularity accumulator: (u, v) -> raw_score (undirected edge key)
     edge_raw_scores: dict[tuple[str, str], float] = {}
 
-    for src_id, target_locs in pairs_by_source.items():
-        src_node = f"activity_{src_id}"
-        src_w = normalized_weights[src_id]
+    for loc_a, loc_b in evaluated_pairs:
+        src_node = f"activity_{loc_a.id}"
+        tgt_node = f"activity_{loc_b.id}"
+        src_w = normalized_weights[loc_a.id]
+        tgt_w = normalized_weights[loc_b.id]
 
-        try:
-            # Reusable Dijkstra shortest path tree from source node
-            paths = nx.single_source_dijkstra_path(graph, src_node, weight="length_m")
-        except Exception:
-            paths = {}
+        if not (graph.has_node(src_node) and graph.has_node(tgt_node) and nx.has_path(graph, src_node, tgt_node)):
+            unreachable_pairs_count += 1
+            continue
 
-        for tgt_loc in target_locs:
-            tgt_node = f"activity_{tgt_loc.id}"
-            tgt_w = normalized_weights[tgt_loc.id]
+        paths, lengths, reached_limit = find_bounded_alternative_paths(
+            graph=graph,
+            source=src_node,
+            target=tgt_node,
+            tolerance_m=alternative_path_tolerance_m,
+            max_paths=max_paths_per_pair,
+        )
 
-            if tgt_node in paths:
-                connected_pairs_count += 1
-                pair_contrib = calculate_pair_contribution(src_w, tgt_w)
-                path_nodes = paths[tgt_node]
+        if not paths:
+            unreachable_pairs_count += 1
+            continue
 
-                # Traverse edges on shortest path
-                for k in range(len(path_nodes) - 1):
-                    u = path_nodes[k]
-                    v = path_nodes[k + 1]
+        connected_pairs_count += 1
+        pairs_with_path_search += 1
+        total_paths_evaluated += len(paths)
+        if len(paths) > 1:
+            pairs_with_multiple_paths += 1
+        if reached_limit:
+            pairs_reaching_path_limit += 1
 
-                    if graph.has_edge(u, v):
-                        edge_data = graph[u][v]
-                        # Only score mapped pedestrian paths, not inferred connectors!
-                        if edge_data.get("provenance") == "osm_mapped":
-                            edge_key = (u, v) if u < v else (v, u)
-                            edge_raw_scores[edge_key] = edge_raw_scores.get(edge_key, 0.0) + pair_contrib
-            else:
-                unreachable_pairs_count += 1
+        shares = calculate_path_shares(
+            lengths=lengths,
+            tolerance_m=alternative_path_tolerance_m,
+            decay_lambda_m=alternative_path_decay_lambda_m,
+        )
+        pair_contrib = calculate_pair_contribution(src_w, tgt_w)
+
+        # Distribute pair contribution across alternative paths
+        for path, share in zip(paths, shares):
+            path_contrib = pair_contrib * share
+            for k in range(len(path) - 1):
+                u = path[k]
+                v = path[k + 1]
+                if graph.has_edge(u, v):
+                    edge_data = graph[u][v]
+                    # Only score mapped pedestrian paths, not inferred connectors!
+                    if edge_data.get("provenance") == "osm_mapped":
+                        edge_key = (u, v) if u < v else (v, u)
+                        edge_raw_scores[edge_key] = edge_raw_scores.get(edge_key, 0.0) + path_contrib
 
     # 5. Assign raw scores and normalize to [0, 1]
     max_raw = max(edge_raw_scores.values()) if edge_raw_scores else 0.0
@@ -180,6 +305,12 @@ def score_pedestrian_routes(
 
     intersections.sort(key=lambda item: item["traffic_score"], reverse=True)
 
+    eff_lambda = (
+        float(alternative_path_decay_lambda_m)
+        if (alternative_path_decay_lambda_m is not None and alternative_path_decay_lambda_m > 0)
+        else (round(alternative_path_tolerance_m / 2.0, 4) if alternative_path_tolerance_m > 0 else 1.0)
+    )
+
     diagnostics = ScoringDiagnostics(
         total_locations=len(locations),
         connected_locations=len(connected_locs),
@@ -188,15 +319,26 @@ def score_pedestrian_routes(
         connected_pairs=connected_pairs_count,
         unreachable_pairs=unreachable_pairs_count,
         max_raw_score=round(max_raw, 4),
+        pairs_with_path_search=pairs_with_path_search,
+        total_paths_evaluated=total_paths_evaluated,
+        pairs_with_multiple_paths=pairs_with_multiple_paths,
+        pairs_reaching_path_limit=pairs_reaching_path_limit,
+        alternative_path_tolerance_m=round(alternative_path_tolerance_m, 2),
+        max_paths_per_pair=max_paths_per_pair,
+        alternative_path_decay_lambda_m=round(eff_lambda, 4),
     )
 
     logger.info(
-        "Route scoring complete: %d evaluated pairs, %d connected, %d unreachable, max_raw_score=%.3f",
+        "Route scoring complete: %d evaluated pairs, %d connected, %d unreachable, "
+        "%d total paths, %d multi-path pairs, max_raw_score=%.3f",
         evaluated_pairs_count,
         connected_pairs_count,
         unreachable_pairs_count,
+        total_paths_evaluated,
+        pairs_with_multiple_paths,
         max_raw,
     )
 
     return graph, diagnostics, intersections
+
 

@@ -16,6 +16,26 @@ import {
 } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 
+// Road / Highway icon matching Lucide styling
+const RoadIcon: React.FC<{ className?: string }> = ({ className = 'w-3.5 h-3.5' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M4 19L8 5" />
+    <path d="M16 5L20 19" />
+    <path d="M12 5v2" />
+    <path d="M12 10v3" />
+    <path d="M12 16v3" />
+  </svg>
+);
+
 export interface BinRecommendationsPanelProps {
   binRecommendations?: BinRecommendationResult | null;
   roadBinRecommendations?: RoadBinRecommendationResult | null;
@@ -279,7 +299,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
             <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
               <div>
                 <div className="flex items-center gap-1.5 text-blue-900">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                  <Trash2 className="w-3.5 h-3.5 shrink-0 text-blue-600" />
                   <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
                     Disposable
                   </span>
@@ -395,20 +415,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
           <div className="p-2 sm:p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-amber-900">
-                <div className="flex items-center -space-x-1">
-                  <span
-                    className="w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
-                    title="Disposable"
-                  >
-                    🗑️
-                  </span>
-                  <span
-                    className="w-3.5 h-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
-                    title="Recyclable"
-                  >
-                    ♻️
-                  </span>
-                </div>
+                <RoadIcon className="w-3.5 h-3.5 shrink-0 text-amber-700" />
                 <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
                   Road Bins
                 </span>
@@ -458,7 +465,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
           <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-blue-900">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                <Trash2 className="w-3.5 h-3.5 shrink-0 text-blue-600" />
                 <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
                   Disposable Bins
                 </span>

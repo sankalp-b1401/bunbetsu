@@ -137,6 +137,15 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
               {connectedPairsFormatted}
             </span>
           </div>
+          {typeof scoring?.total_paths_evaluated === 'number' && scoring.total_paths_evaluated > 0 && (
+            <div className="col-span-2 pt-1 border-t border-dashed border-[#E1E8DE] flex items-center justify-between text-[9px] text-[#667267]">
+              <span>Alternative routes:</span>
+              <span className="font-semibold text-[#202820]">
+                {scoring.total_paths_evaluated} paths ({scoring.pairs_with_multiple_paths ?? 0} multi-path)
+                {scoring.pairs_reaching_path_limit ? ` · limit reached (${scoring.pairs_reaching_path_limit})` : ''}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

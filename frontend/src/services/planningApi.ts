@@ -20,15 +20,18 @@ import {
   PredictionResult,
   RecommendedBinItem,
   RoadBinRecommendationResult,
-} from '../types/bunbetsu';
+} from "../types/bunbetsu";
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "";
 
 export interface RequestCampusPlanParams {
   eventDetails: EventDetails;
   campus: Campus;
   locations: CampusLocation[];
   maxSnapDistanceM?: number;
+  alternativePathToleranceM?: number;
+  maxPathsPerPair?: number;
+  alternativePathDecayLambdaM?: number | null;
 }
 
 /**
@@ -36,30 +39,38 @@ export interface RequestCampusPlanParams {
  * to frontend-ready structures for the Plan Dashboard.
  */
 export async function requestCampusPlan(
-  params: RequestCampusPlanParams
+  params: RequestCampusPlanParams,
 ): Promise<CampusPlanResult> {
-  const { eventDetails, campus, locations, maxSnapDistanceM = 50.0 } = params;
+  const {
+    eventDetails,
+    campus,
+    locations,
+    maxSnapDistanceM = 50.0,
+    alternativePathToleranceM = 500.0,
+    maxPathsPerPair = 20,
+    alternativePathDecayLambdaM = null,
+  } = params;
 
   // 1. Client-side pre-flight validation
   if (!campus) {
-    throw new Error('A campus must be selected before planning.');
+    throw new Error("A campus must be selected before planning.");
   }
   if (!campus.state || !campus.state.trim()) {
     throw new Error(
-      'The selected campus does not possess an established State/UT required for baseline waste rate lookup.'
+      "The selected campus does not possess an established State/UT required for baseline waste rate lookup.",
     );
   }
   if (!eventDetails.festName || !eventDetails.festName.trim()) {
-    throw new Error('Event name is required.');
+    throw new Error("Event name is required.");
   }
   if (!eventDetails.durationDays || eventDetails.durationDays <= 0) {
-    throw new Error('Event duration must be at least 1 day.');
+    throw new Error("Event duration must be at least 1 day.");
   }
   if (!eventDetails.expectedFootfall || eventDetails.expectedFootfall <= 0) {
-    throw new Error('Expected footfall must be a positive integer.');
+    throw new Error("Expected footfall must be a positive integer.");
   }
   if (!locations || locations.length === 0) {
-    throw new Error('At least one event location must be configured.');
+    throw new Error("At least one event location must be configured.");
   }
 
   // Validate location integrity & unique names
@@ -67,38 +78,46 @@ export async function requestCampusPlan(
   const uniqueNames = new Set(locationNames);
   if (uniqueNames.size !== locationNames.length) {
     const duplicates = locationNames.filter(
-      (name, idx) => locationNames.indexOf(name) !== idx
+      (name, idx) => locationNames.indexOf(name) !== idx,
     );
     throw new Error(
-      `Duplicate location names detected: ${Array.from(new Set(duplicates)).join(
-        ', '
-      )}. Each location must have a unique name for spatial bin distribution modeling.`
+      `Duplicate location names detected: ${Array.from(
+        new Set(duplicates),
+      ).join(
+        ", ",
+      )}. Each location must have a unique name for spatial bin distribution modeling.`,
     );
   }
 
   for (const loc of locations) {
     if (!loc.id) {
-      throw new Error('Every configured location must possess a stable unique identifier.');
+      throw new Error(
+        "Every configured location must possess a stable unique identifier.",
+      );
     }
     if (!loc.name || !loc.name.trim()) {
       throw new Error(`Location "${loc.id}" has an empty name.`);
     }
     if (!loc.area || loc.area <= 0) {
       throw new Error(
-        `Location "${loc.name}" has invalid area (${loc.area} m²). Must be greater than 0.`
+        `Location "${loc.name}" has invalid area (${loc.area} m²). Must be greater than 0.`,
       );
     }
     if (!loc.activities || loc.activities.length === 0) {
-      throw new Error(`Location "${loc.name}" must have at least one activity tag.`);
+      throw new Error(
+        `Location "${loc.name}" must have at least one activity tag.`,
+      );
     }
     if (!loc.geometry || !loc.geometry.type || !loc.geometry.coordinates) {
-      throw new Error(`Location "${loc.name}" has invalid or missing geometry.`);
+      throw new Error(
+        `Location "${loc.name}" has invalid or missing geometry.`,
+      );
     }
   }
 
   // 2. Prepare payload
   const distinctActivities = Array.from(
-    new Set(locations.flatMap((l) => l.activities))
+    new Set(locations.flatMap((l) => l.activities)),
   ) as ActivityType[];
 
   const boundary = campus.geometry || campus.boundaryGeometry || null;
@@ -122,6 +141,9 @@ export async function requestCampusPlan(
       max_snap_distance_m: maxSnapDistanceM,
       overpass_timeout_s: 25.0,
       check_barriers: true,
+      alternative_path_tolerance_m: alternativePathToleranceM,
+      max_paths_per_pair: maxPathsPerPair,
+      alternative_path_decay_lambda_m: alternativePathDecayLambdaM,
     },
   };
 
@@ -131,30 +153,32 @@ export async function requestCampusPlan(
   let response: Response;
   try {
     response = await fetch(endpoint, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+        "Content-Type": "application/json",
+        Accept: "application/json",
       },
       body: JSON.stringify(payload),
     });
   } catch (err: any) {
     throw new Error(
       `Unable to connect to Bunbetsu planning backend at ${
-        API_BASE_URL || 'http://localhost:8000'
-      }. Please ensure the backend server is running.`
+        API_BASE_URL || "http://localhost:8000"
+      }. Please ensure the backend server is running.`,
     );
   }
 
   if (response.status === 422) {
-    let errorDetail = 'Validation error from Bunbetsu planning pipeline.';
+    let errorDetail = "Validation error from Bunbetsu planning pipeline.";
     try {
       const errJson = await response.json();
       if (errJson?.detail) {
-        if (typeof errJson.detail === 'string') {
+        if (typeof errJson.detail === "string") {
           errorDetail = errJson.detail;
         } else if (Array.isArray(errJson.detail)) {
-          errorDetail = errJson.detail.map((e: any) => e.msg || e.message).join('; ');
+          errorDetail = errJson.detail
+            .map((e: any) => e.msg || e.message)
+            .join("; ");
         }
       }
     } catch {
@@ -178,20 +202,25 @@ export async function requestCampusPlan(
   try {
     data = await response.json();
   } catch {
-    throw new Error('Received malformed JSON from planning endpoint.');
+    throw new Error("Received malformed JSON from planning endpoint.");
   }
 
-  if (!data || typeof data.success !== 'boolean') {
-    throw new Error('Incomplete planning response received from backend.');
+  if (!data || typeof data.success !== "boolean") {
+    throw new Error("Incomplete planning response received from backend.");
   }
 
   // 4. Transform waste prediction output
   let predictionResult: PredictionResult | null = null;
-  if (data.prediction && data.prediction.total_waste_kg && data.prediction.composition_kg) {
+  if (
+    data.prediction &&
+    data.prediction.total_waste_kg &&
+    data.prediction.composition_kg
+  ) {
     const pred = data.prediction;
-    const totalAttendeeDays = eventDetails.expectedFootfall * eventDetails.durationDays;
+    const totalAttendeeDays =
+      eventDetails.expectedFootfall * eventDetails.durationDays;
     const baselineTotalKg = Math.round(
-      totalAttendeeDays * pred.baseline_rate_kg_per_person_day
+      totalAttendeeDays * pred.baseline_rate_kg_per_person_day,
     );
 
     const totalWasteKg = {
@@ -206,11 +235,11 @@ export async function requestCampusPlan(
       max: Number((pred.total_waste_kg.high / 1000).toFixed(2)),
     };
 
-    const foodKg = Math.round(pred.composition_kg['Food']?.central || 0);
-    const plasticKg = Math.round(pred.composition_kg['Plastic']?.central || 0);
-    const paperKg = Math.round(pred.composition_kg['Paper']?.central || 0);
-    const glassKg = Math.round(pred.composition_kg['Glass']?.central || 0);
-    const othersKg = Math.round(pred.composition_kg['Others']?.central || 0);
+    const foodKg = Math.round(pred.composition_kg["Food"]?.central || 0);
+    const plasticKg = Math.round(pred.composition_kg["Plastic"]?.central || 0);
+    const paperKg = Math.round(pred.composition_kg["Paper"]?.central || 0);
+    const glassKg = Math.round(pred.composition_kg["Glass"]?.central || 0);
+    const othersKg = Math.round(pred.composition_kg["Others"]?.central || 0);
     const dryRecyclablesKg = Math.round(pred.recyclable_kg.central);
 
     const wasteBreakdown = {
@@ -222,36 +251,42 @@ export async function requestCampusPlan(
       dryRecyclablesKg,
     };
 
-    const locationAllocations: LocationWasteAllocation[] = pred.location_allocations.map(
-      (alloc) => {
+    const locationAllocations: LocationWasteAllocation[] =
+      pred.location_allocations.map((alloc) => {
         const locEstimatedWaste = Math.round(alloc.total_waste_kg.central);
-        const locFood = Math.round(alloc.composition_kg['Food']?.central || 0);
+        const locFood = Math.round(alloc.composition_kg["Food"]?.central || 0);
         const locRecyclables = Math.round(alloc.recyclable_kg.central || 0);
-        const locOthers = Math.round(alloc.composition_kg['Others']?.central || 0);
+        const locOthers = Math.round(
+          alloc.composition_kg["Others"]?.central || 0,
+        );
 
         // UI-only derived estimate (clearly separated from python bin model output)
-        const compostBins = Math.max(1, Math.round(locFood / (eventDetails.durationDays * 35)));
+        const compostBins = Math.max(
+          1,
+          Math.round(locFood / (eventDetails.durationDays * 35)),
+        );
         const recyclingBins = Math.max(
           1,
-          Math.round(locRecyclables / (eventDetails.durationDays * 35))
+          Math.round(locRecyclables / (eventDetails.durationDays * 35)),
         );
         const landfillBins = Math.max(
           1,
-          Math.round(locOthers / (eventDetails.durationDays * 35))
+          Math.round(locOthers / (eventDetails.durationDays * 35)),
         );
 
         return {
           ...alloc,
           estimatedWasteKg: locEstimatedWaste,
-          spatialSharePercent: Number((alloc.normalized_share * 100).toFixed(1)),
+          spatialSharePercent: Number(
+            (alloc.normalized_share * 100).toFixed(1),
+          ),
           binsRecommended: {
             compost: compostBins,
             recycling: recyclingBins,
             landfill: landfillBins,
           },
         };
-      }
-    );
+      });
 
     const contractFestInput: FestInput = {
       total_footfall: eventDetails.expectedFootfall,
@@ -299,7 +334,7 @@ export async function requestCampusPlan(
       id: b.id,
       locationId: b.location_id,
       locationName: b.location_name,
-      binType: (b.bin_type || 'Disposable') as any,
+      binType: (b.bin_type || "Disposable") as any,
       coordinates: b.coordinates,
       binIndex: b.bin_index,
       binScenario: b.bin_scenario,
@@ -316,7 +351,9 @@ export async function requestCampusPlan(
       rectangle_perimeter_m: loc.rectangle_perimeter_m ?? 0,
       perimeter_spacing_max_bins: loc.perimeter_spacing_max_bins ?? 0,
       perimeter_spacing_minimum_bins:
-        loc.perimeter_spacing_minimum_bins ?? loc.perimeter_spacing_max_bins ?? 0,
+        loc.perimeter_spacing_minimum_bins ??
+        loc.perimeter_spacing_max_bins ??
+        0,
       recommended_bins: loc.recommended_bins,
       required_emptying_turns: loc.required_emptying_turns,
       daily_capacity_coverage_litres: loc.daily_capacity_coverage_litres ?? 0,
@@ -341,7 +378,7 @@ export async function requestCampusPlan(
               id: p.id,
               locationId: p.location_id,
               locationName: p.location_name,
-              binType: (p.bin_type || 'Disposable') as any,
+              binType: (p.bin_type || "Disposable") as any,
               coordinates: p.coordinates,
               binIndex: p.bin_index,
               binScenario: p.bin_scenario,
@@ -363,7 +400,7 @@ export async function requestCampusPlan(
               id: p.id,
               locationId: p.location_id,
               locationName: p.location_name,
-              binType: (p.bin_type || 'Recyclable') as any,
+              binType: (p.bin_type || "Recyclable") as any,
               coordinates: p.coordinates,
               binIndex: p.bin_index,
               binScenario: p.bin_scenario,
@@ -378,7 +415,7 @@ export async function requestCampusPlan(
         id: p.id,
         locationId: p.location_id,
         locationName: p.location_name,
-        binType: (p.bin_type || 'Disposable') as any,
+        binType: (p.bin_type || "Disposable") as any,
         coordinates: p.coordinates,
         binIndex: p.bin_index,
         binScenario: p.bin_scenario,
@@ -395,9 +432,10 @@ export async function requestCampusPlan(
     } | null = null;
     if (rawBins.stream_breakdown_available && rawBins.stream_counts) {
       const dispCount =
-        rawBins.stream_counts['disposable'] ??
-        ((rawBins.stream_counts['general'] || 0) + (rawBins.stream_counts['food'] || 0));
-      const recCount = rawBins.stream_counts['recyclable'] || 0;
+        rawBins.stream_counts["disposable"] ??
+        (rawBins.stream_counts["general"] || 0) +
+          (rawBins.stream_counts["food"] || 0);
+      const recCount = rawBins.stream_counts["recyclable"] || 0;
       streamCounts = {
         disposable: dispCount,
         recyclable: recCount,
@@ -406,8 +444,8 @@ export async function requestCampusPlan(
       };
     }
 
-    const binStatus: 'success' | 'partial' | 'failed' =
-      rawBins.status || (rawBins.total_bins > 0 ? 'success' : 'failed');
+    const binStatus: "success" | "partial" | "failed" =
+      rawBins.status || (rawBins.total_bins > 0 ? "success" : "failed");
 
     binRecommendations = {
       status: binStatus,
@@ -425,7 +463,8 @@ export async function requestCampusPlan(
         rawBins.usable_bin_capacity_litres ??
         rawBins.bin_capacity_litres * rawBins.usable_fill_fraction,
       emptyingCyclesPerDay: rawBins.emptying_cycles_per_day,
-      effectiveCapacityLitresPerBinPerDay: rawBins.effective_capacity_litres_per_bin_per_day,
+      effectiveCapacityLitresPerBinPerDay:
+        rawBins.effective_capacity_litres_per_bin_per_day,
       boundarySpacingTargetM: rawBins.boundary_spacing_target_m ?? 25.0,
       boundaryInsetM: rawBins.boundary_inset_m,
       assumptions: rawBins.assumptions || [],
@@ -438,60 +477,130 @@ export async function requestCampusPlan(
   if (data.road_bin_recommendations) {
     const rawRoad = data.road_bin_recommendations;
     roadBinRecommendations = {
-      total_road_bins: Number(rawRoad.total_road_bins ?? rawRoad.placements?.length ?? 0),
-      total_stations: rawRoad.total_stations !== undefined ? Number(rawRoad.total_stations) : (Array.isArray(rawRoad.placements) ? rawRoad.placements.length : 0),
-      total_disposable_physical_bins: rawRoad.total_disposable_physical_bins !== undefined ? Number(rawRoad.total_disposable_physical_bins) : undefined,
-      total_recyclable_physical_bins: rawRoad.total_recyclable_physical_bins !== undefined ? Number(rawRoad.total_recyclable_physical_bins) : undefined,
+      total_road_bins: Number(
+        rawRoad.total_road_bins ?? rawRoad.placements?.length ?? 0,
+      ),
+      total_stations:
+        rawRoad.total_stations !== undefined
+          ? Number(rawRoad.total_stations)
+          : Array.isArray(rawRoad.placements)
+            ? rawRoad.placements.length
+            : 0,
+      total_disposable_physical_bins:
+        rawRoad.total_disposable_physical_bins !== undefined
+          ? Number(rawRoad.total_disposable_physical_bins)
+          : undefined,
+      total_recyclable_physical_bins:
+        rawRoad.total_recyclable_physical_bins !== undefined
+          ? Number(rawRoad.total_recyclable_physical_bins)
+          : undefined,
       total_eligible_candidates: Number(rawRoad.total_eligible_candidates ?? 0),
-      total_locations_requiring_coverage: Number(rawRoad.total_locations_requiring_coverage ?? 0),
-      covered_location_ids: Array.isArray(rawRoad.covered_location_ids) ? rawRoad.covered_location_ids : [],
-      uncovered_location_ids: Array.isArray(rawRoad.uncovered_location_ids) ? rawRoad.uncovered_location_ids : [],
-      covered_disposable_location_ids: Array.isArray(rawRoad.covered_disposable_location_ids) ? rawRoad.covered_disposable_location_ids : [],
-      covered_recyclable_location_ids: Array.isArray(rawRoad.covered_recyclable_location_ids) ? rawRoad.covered_recyclable_location_ids : [],
-      uncovered_disposable_location_ids: Array.isArray(rawRoad.uncovered_disposable_location_ids) ? rawRoad.uncovered_disposable_location_ids : [],
-      uncovered_recyclable_location_ids: Array.isArray(rawRoad.uncovered_recyclable_location_ids) ? rawRoad.uncovered_recyclable_location_ids : [],
+      total_locations_requiring_coverage: Number(
+        rawRoad.total_locations_requiring_coverage ?? 0,
+      ),
+      covered_location_ids: Array.isArray(rawRoad.covered_location_ids)
+        ? rawRoad.covered_location_ids
+        : [],
+      uncovered_location_ids: Array.isArray(rawRoad.uncovered_location_ids)
+        ? rawRoad.uncovered_location_ids
+        : [],
+      covered_disposable_location_ids: Array.isArray(
+        rawRoad.covered_disposable_location_ids,
+      )
+        ? rawRoad.covered_disposable_location_ids
+        : [],
+      covered_recyclable_location_ids: Array.isArray(
+        rawRoad.covered_recyclable_location_ids,
+      )
+        ? rawRoad.covered_recyclable_location_ids
+        : [],
+      uncovered_disposable_location_ids: Array.isArray(
+        rawRoad.uncovered_disposable_location_ids,
+      )
+        ? rawRoad.uncovered_disposable_location_ids
+        : [],
+      uncovered_recyclable_location_ids: Array.isArray(
+        rawRoad.uncovered_recyclable_location_ids,
+      )
+        ? rawRoad.uncovered_recyclable_location_ids
+        : [],
       location_influence_radii_m: rawRoad.location_influence_radii_m || {},
-      location_dominant_waste_types: rawRoad.location_dominant_waste_types || {},
-      location_dominant_waste_types_by_stream: rawRoad.location_dominant_waste_types_by_stream || {},
-      location_influence_radii_m_by_stream: rawRoad.location_influence_radii_m_by_stream || {},
-      location_stream_coverage_status: rawRoad.location_stream_coverage_status || {},
-      candidate_sampling_interval_m: Number(rawRoad.candidate_sampling_interval_m ?? 5.0),
+      location_dominant_waste_types:
+        rawRoad.location_dominant_waste_types || {},
+      location_dominant_waste_types_by_stream:
+        rawRoad.location_dominant_waste_types_by_stream || {},
+      location_influence_radii_m_by_stream:
+        rawRoad.location_influence_radii_m_by_stream || {},
+      location_stream_coverage_status:
+        rawRoad.location_stream_coverage_status || {},
+      candidate_sampling_interval_m: Number(
+        rawRoad.candidate_sampling_interval_m ?? 5.0,
+      ),
       road_bin_spacing_m: Number(rawRoad.road_bin_spacing_m ?? 25.0),
-      solver_name: String(rawRoad.solver_name || 'unknown'),
+      solver_name: String(rawRoad.solver_name || "unknown"),
       optimality_proven: Boolean(rawRoad.optimality_proven),
       total_popularity_score: Number(rawRoad.total_popularity_score ?? 0),
-      spacing_validation_passed: rawRoad.spacing_validation_passed !== undefined ? Boolean(rawRoad.spacing_validation_passed) : true,
+      spacing_validation_passed:
+        rawRoad.spacing_validation_passed !== undefined
+          ? Boolean(rawRoad.spacing_validation_passed)
+          : true,
       placements: Array.isArray(rawRoad.placements)
         ? rawRoad.placements.map((p: any) => {
             let streams: string[] = [];
             if (Array.isArray(p.stream_types) && p.stream_types.length > 0) {
               streams = p.stream_types.map(String);
-            } else if (p.stream_type === 'Disposable') {
-              streams = ['Disposable'];
-            } else if (p.stream_type === 'Recyclable') {
-              streams = ['Recyclable'];
+            } else if (p.stream_type === "Disposable") {
+              streams = ["Disposable"];
+            } else if (p.stream_type === "Recyclable") {
+              streams = ["Recyclable"];
             } else if (p.stream_type) {
-              streams = ['Disposable', 'Recyclable'];
+              streams = ["Disposable", "Recyclable"];
             }
             return {
               id: String(p.id),
-              coordinates: [Number(p.coordinates[0]), Number(p.coordinates[1])] as [number, number],
-              source_segment_id: String(p.source_segment_id || ''),
-              normalized_popularity_score: Number(p.normalized_popularity_score ?? 0),
-              served_location_ids: Array.isArray(p.served_location_ids) ? p.served_location_ids : [],
-              served_location_names: Array.isArray(p.served_location_names) ? p.served_location_names : [],
+              coordinates: [
+                Number(p.coordinates[0]),
+                Number(p.coordinates[1]),
+              ] as [number, number],
+              source_segment_id: String(p.source_segment_id || ""),
+              normalized_popularity_score: Number(
+                p.normalized_popularity_score ?? 0,
+              ),
+              served_location_ids: Array.isArray(p.served_location_ids)
+                ? p.served_location_ids
+                : [],
+              served_location_names: Array.isArray(p.served_location_names)
+                ? p.served_location_names
+                : [],
               served_location_distances_m: p.served_location_distances_m || {},
-              stream_type: String(p.stream_type || (streams.length === 2 ? 'Disposable & Recyclable' : streams[0] || 'Unknown')),
+              stream_type: String(
+                p.stream_type ||
+                  (streams.length === 2
+                    ? "Disposable & Recyclable"
+                    : streams[0] || "Unknown"),
+              ),
               stream_types: streams,
-              served_disposable_location_ids: Array.isArray(p.served_disposable_location_ids) ? p.served_disposable_location_ids : [],
-              served_recyclable_location_ids: Array.isArray(p.served_recyclable_location_ids) ? p.served_recyclable_location_ids : [],
-              physical_bin_count: Number(p.physical_bin_count ?? (streams.length || 1)),
-              provenance: String(p.provenance || 'road_bin_optimizer'),
+              served_disposable_location_ids: Array.isArray(
+                p.served_disposable_location_ids,
+              )
+                ? p.served_disposable_location_ids
+                : [],
+              served_recyclable_location_ids: Array.isArray(
+                p.served_recyclable_location_ids,
+              )
+                ? p.served_recyclable_location_ids
+                : [],
+              physical_bin_count: Number(
+                p.physical_bin_count ?? (streams.length || 1),
+              ),
+              provenance: String(p.provenance || "road_bin_optimizer"),
             };
           })
         : [],
       warnings: Array.isArray(rawRoad.warnings) ? rawRoad.warnings : [],
-      assumptions: Array.isArray(rawRoad.assumptions) ? rawRoad.assumptions : [],
+      assumptions: Array.isArray(rawRoad.assumptions)
+        ? rawRoad.assumptions
+        : [],
     };
   }
 
@@ -503,4 +612,3 @@ export async function requestCampusPlan(
     diagnostics: data.diagnostics,
   };
 }
-

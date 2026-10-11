@@ -697,6 +697,76 @@ async function runPlanningContractTests() {
 
   assert(missingRoadBinResult.roadBinRecommendations === null, 'Missing road-bin response must map to null (unavailable)');
 
+  // Test Feature 9: Alternative path routing configuration and diagnostics contract
+  let capturedPayload: any = null;
+  globalThis.fetch = (async (_url: string, init: any) => {
+    capturedPayload = JSON.parse(init.body);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        prediction: {
+          success: true,
+          campus_state: 'Delhi',
+          total_waste_kg: { low: 100, central: 200, high: 300 },
+          recyclable_kg: { low: 30, central: 60, high: 90 },
+          disposable_kg: { low: 70, central: 140, high: 210 },
+        },
+        bin_recommendations: null,
+        road_bin_recommendations: null,
+        routes: {
+          success: true,
+          boundary_geojson: mockCampus.geometry,
+          paths_geojson: { type: 'FeatureCollection', features: [] },
+          connectors_geojson: { type: 'FeatureCollection', features: [] },
+          location_connectivity: [],
+          diagnostics: {
+            graph: { nodes_count: 10, edges_count: 15, total_length_m: 500, components_count: 1, discarded_ways_count: 0 },
+            scoring: {
+              total_locations: 2,
+              connected_locations: 2,
+              unmatched_locations: [],
+              evaluated_pairs: 1,
+              connected_pairs: 1,
+              unreachable_pairs: 0,
+              max_raw_score: 0.85,
+              total_paths_evaluated: 4,
+              pairs_with_path_search: 1,
+              pairs_with_multiple_paths: 1,
+              pairs_reaching_path_limit: 0,
+              alternative_path_tolerance_m: 12.0,
+              max_paths_per_pair: 10,
+              alternative_path_decay_lambda_m: 6.0,
+            },
+          },
+          metadata: {},
+          warnings: [],
+        },
+        diagnostics: {
+          warnings: [],
+          errors: [],
+          stage_status: { prediction: 'success', bins: 'skipped', routes: 'success' },
+        },
+      }),
+    };
+  }) as any;
+
+  const altRoutesResult = await requestCampusPlan({
+    campus: mockCampus,
+    eventDetails: mockEvent,
+    locations: mockLocations,
+    alternativePathToleranceM: 12.0,
+    maxPathsPerPair: 10,
+    alternativePathDecayLambdaM: 6.0,
+  });
+
+  assert(capturedPayload?.routing_config?.alternative_path_tolerance_m === 12.0, 'alternative_path_tolerance_m sent in payload');
+  assert(capturedPayload?.routing_config?.max_paths_per_pair === 10, 'max_paths_per_pair sent in payload');
+  assert(capturedPayload?.routing_config?.alternative_path_decay_lambda_m === 6.0, 'alternative_path_decay_lambda_m sent in payload');
+  assert(altRoutesResult.routeResult?.diagnostics?.scoring?.total_paths_evaluated === 4, 'total_paths_evaluated mapped in routeResult diagnostics');
+  assert(altRoutesResult.routeResult?.diagnostics?.scoring?.pairs_with_multiple_paths === 1, 'pairs_with_multiple_paths mapped in routeResult diagnostics');
+
   // Restore original fetch
   globalThis.fetch = originalFetch;
 

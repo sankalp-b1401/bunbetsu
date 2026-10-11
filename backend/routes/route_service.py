@@ -31,13 +31,16 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 SCORING_METHOD_METADATA = {
-    "version": "Phase 2 Routes Pipeline v1.0",
-    "description": "Deterministic pedestrian shortest-path demand allocation on OSM graph.",
+    "version": "Phase 2 Routes Pipeline v2.0 (Alternative Pedestrian Paths)",
+    "description": "Bounded multi-path pedestrian demand allocation on OSM graph with exponential distance decay.",
     "cost_metric": "Geodesic length in metres",
-    "pair_scoring_function": "Geometric mean of normalized endpoint activity attraction weights",
+    "pair_scoring_function": (
+        "Geometric mean of normalized endpoint activity attraction weights "
+        "distributed across bounded alternative paths with exponential distance decay"
+    ),
     "score_interpretation": (
         "Modelled relative route importance index in range [0, 1]. "
-        "This indicates relative pedestrian corridor demand under event layout assumptions, "
+        "This indicates relative pedestrian corridor demand under event layout assumptions and alternative path discovery, "
         "not measured empirical footfall counts or sensor measurements."
     ),
 }
@@ -130,11 +133,14 @@ async def plan_pedestrian_routes(
             f"{len(flagged_statuses)} location connector(s) cross known building/barrier geometries."
         )
 
-    # 5. Score shortest pedestrian routes
+    # 5. Score pedestrian routes with bounded alternative paths
     G_scored, scoring_diag, intersections_list = score_pedestrian_routes(
         graph=G_connected,
         locations=request.locations,
         max_route_pairs=config.max_route_pairs,
+        alternative_path_tolerance_m=config.alternative_path_tolerance_m,
+        max_paths_per_pair=config.max_paths_per_pair,
+        alternative_path_decay_lambda_m=config.alternative_path_decay_lambda_m,
     )
 
     if scoring_diag.unreachable_pairs > 0:
@@ -144,6 +150,10 @@ async def plan_pedestrian_routes(
     if scoring_diag.connected_pairs == 0 and scoring_diag.evaluated_pairs > 0:
         warnings.append(
             "No location pairs could be connected along mapped pedestrian paths."
+        )
+    if scoring_diag.pairs_reaching_path_limit > 0:
+        warnings.append(
+            f"{scoring_diag.pairs_reaching_path_limit} location pair(s) reached the maximum path limit ({config.max_paths_per_pair})."
         )
 
     # 6. Serialize mapped paths GeoJSON FeatureCollection

@@ -97,6 +97,24 @@ class RoutingConfigSchema(BaseModel):
         default=True,
         description="Whether candidate connectors crossing known building/barrier geometries are flagged.",
     )
+    alternative_path_tolerance_m: float = Field(
+        default=1000.0,
+        ge=0.0,
+        le=500.0,
+        description="Maximum additional distance in metres beyond the shortest path for alternative pedestrian paths.",
+    )
+    max_paths_per_pair: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum number of eligible paths evaluated per location pair, including the shortest path.",
+    )
+    alternative_path_decay_lambda_m: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        le=500.0,
+        description="Optional exponential decay scale in metres. Derived as tolerance / 2 when omitted.",
+    )
 
 
 class LocationRouteRequest(BaseModel):
@@ -208,6 +226,13 @@ class ScoringDiagnostics(BaseModel):
     connected_pairs: int
     unreachable_pairs: int
     max_raw_score: float
+    pairs_with_path_search: int = 0
+    total_paths_evaluated: int = 0
+    pairs_with_multiple_paths: int = 0
+    pairs_reaching_path_limit: int = 0
+    alternative_path_tolerance_m: float = 500.0
+    max_paths_per_pair: int = 20
+    alternative_path_decay_lambda_m: float = 5.0
 
 
 class RoutePlanResponse(BaseModel):

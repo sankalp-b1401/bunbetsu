@@ -253,6 +253,16 @@ export interface GraphDiagnostics {
   discarded_ways_count: number;
 }
 
+export interface RoutingConfig {
+  max_snap_distance_m?: number;
+  overpass_timeout_s?: number;
+  max_route_pairs?: number;
+  check_barriers?: boolean;
+  alternative_path_tolerance_m?: number;
+  max_paths_per_pair?: number;
+  alternative_path_decay_lambda_m?: number | null;
+}
+
 export interface ScoringDiagnostics {
   total_locations: number;
   connected_locations: number;
@@ -261,6 +271,13 @@ export interface ScoringDiagnostics {
   connected_pairs: number;
   unreachable_pairs: number;
   max_raw_score: number;
+  pairs_with_path_search?: number;
+  total_paths_evaluated?: number;
+  pairs_with_multiple_paths?: number;
+  pairs_reaching_path_limit?: number;
+  alternative_path_tolerance_m?: number;
+  max_paths_per_pair?: number;
+  alternative_path_decay_lambda_m?: number | null;
 }
 
 export interface RouteDiagnostics {
@@ -431,11 +448,7 @@ export interface CampusPlanPayload {
   activities?: ActivityType[];
   campus_boundary?: any;
   locations: LocationPlanPayload[];
-  routing_config?: {
-    max_snap_distance_m?: number;
-    overpass_timeout_s?: number;
-    check_barriers?: boolean;
-  };
+  routing_config?: RoutingConfig;
 }
 
 export interface StageStatus {

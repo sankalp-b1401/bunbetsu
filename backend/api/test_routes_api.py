@@ -166,3 +166,38 @@ def test_routes_api_upstream_overpass_service_error_502(valid_plan_payload):
         assert resp.status_code == 502
         assert "OpenStreetMap data acquisition failed" in resp.json()["detail"]
 
+
+def test_routes_api_alternative_paths_configuration(valid_plan_payload):
+    mock_osm_data = {
+        "elements": [
+            {"type": "node", "id": 1, "lon": 81.861, "lat": 25.4940},
+            {"type": "node", "id": 2, "lon": 81.863, "lat": 25.4940},
+            {"type": "node", "id": 3, "lon": 81.866, "lat": 25.4940},
+            {"type": "way", "id": 1001, "nodes": [1, 2, 3], "tags": {"highway": "footway"}},
+        ]
+    }
+
+    # Custom alternative path parameters
+    valid_plan_payload["config"] = {
+        "max_snap_distance_m": 60.0,
+        "alternative_path_tolerance_m": 15.0,
+        "max_paths_per_pair": 5,
+        "alternative_path_decay_lambda_m": 7.5,
+    }
+
+    with patch("routes.route_service.fetch_osm_data_for_boundary", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = mock_osm_data
+
+        resp = client.post("/api/routes/plan", json=valid_plan_payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+
+        scoring_diag = data["diagnostics"]["scoring"]
+        assert scoring_diag["alternative_path_tolerance_m"] == 15.0
+        assert scoring_diag["max_paths_per_pair"] == 5
+        assert scoring_diag["alternative_path_decay_lambda_m"] == 7.5
+        assert "total_paths_evaluated" in scoring_diag
+        assert "pairs_with_path_search" in scoring_diag
+
+
