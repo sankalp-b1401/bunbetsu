@@ -50,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, []);
 
-  const initials = user ? getUserInitials(user.name) : 'AS';
+  const initials = user ? getUserInitials(user.name) : 'U';
 
   return (
     <header className="w-full bg-white/95 backdrop-blur-md border-b border-[#E1E8DE] shrink-0 z-30 select-none shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
@@ -169,7 +169,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setShowDropdown((prev) => !prev)}
               className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-[#F4F6F2] transition cursor-pointer select-none"
               aria-expanded={showDropdown}
-              title={user?.name || 'Aarav Sharma'}
+              title={user?.name || 'User'}
             >
               {/* User Initials Avatar Circle */}
               <div className="w-8 h-8 rounded-full bg-[#0B4222] text-white flex items-center justify-center text-xs font-bold tracking-tight shadow-2xs select-none">
@@ -185,7 +185,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="absolute right-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-[#E1E8DE] py-2 z-50 animate-in fade-in duration-100">
                 <div className="px-4 py-2 border-b border-[#F0F4EE]">
                   <div className="text-xs font-bold text-[#183E28] truncate">
-                    {user?.name || 'Aarav Sharma'}
+                    {user?.name || 'User'}
                   </div>
                   {user?.email && (
                     <div className="text-[11px] text-[#667267] truncate mt-0.5">{user.email}</div>

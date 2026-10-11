@@ -4,7 +4,7 @@
  * Integrates waste prediction, polygon-constrained bin distribution, and pedestrian routing.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { CampusFinder } from './components/Step1CampusFinder/CampusFinder';
 import { EventConfiguration } from './components/Step2EventConfiguration/EventConfiguration';
@@ -24,11 +24,17 @@ import {
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
 import { DashboardPage } from './components/Dashboard/DashboardPage';
+import {
+  supabase,
+  isSupabaseConfigured,
+  buildAuthUserFromSession,
+} from './lib/supabase';
 
 export default function App() {
   // Top-level navigation: 'auth' | 'dashboard' | 'planner'
   const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'planner'>('auth');
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
 
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -65,6 +71,87 @@ export default function App() {
   const [planningError, setPlanningError] = useState<string | null>(null);
   const [routesError, setRoutesError] = useState<string | null>(null);
   const [isPlanStale, setIsPlanStale] = useState<boolean>(false);
+
+  // Restore existing Supabase session and subscribe to auth state changes
+  useEffect(() => {
+    let isMounted = true;
+    let initialResolutionHandled = false;
+
+    // Helper to safely schedule profile resolution outside callback event loop to prevent deadlocks
+    const scheduleProfileResolution = (sessionUser: any) => {
+      setTimeout(async () => {
+        if (!isMounted) return;
+        try {
+          const authUser = await buildAuthUserFromSession(sessionUser);
+          if (!isMounted) return;
+          if (authUser) {
+            setUser(authUser);
+            setCurrentView((prev) => (prev === 'auth' ? 'dashboard' : prev));
+          }
+        } catch (err) {
+          console.error('[Bunbetsu Auth] Profile resolution error:', err);
+        } finally {
+          if (isMounted) {
+            setIsAuthInitializing(false);
+          }
+        }
+      }, 0);
+    };
+
+    if (!isSupabaseConfigured) {
+      setIsAuthInitializing(false);
+      return;
+    }
+
+    // Subscribe to auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_OUT') {
+        setUser((currentUser) => (currentUser?.isGuest ? currentUser : null));
+        setCurrentView((prev) => (prev === 'dashboard' ? 'auth' : prev));
+        setIsAuthInitializing(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        if (session?.user) {
+          scheduleProfileResolution(session.user);
+        }
+      } else if (event === 'INITIAL_SESSION') {
+        initialResolutionHandled = true;
+        if (session?.user) {
+          scheduleProfileResolution(session.user);
+        } else {
+          setIsAuthInitializing(false);
+        }
+      }
+    });
+
+    // Fallback getSession() to avoid race conditions if INITIAL_SESSION is not emitted
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (!isMounted) return;
+        if (!initialResolutionHandled) {
+          if (session?.user) {
+            scheduleProfileResolution(session.user);
+          } else {
+            setIsAuthInitializing(false);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('[Bunbetsu Auth] Session retrieval error:', err);
+        if (isMounted) {
+          setIsAuthInitializing(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Campus selection change handler: clears prior planning outputs and entry gate
   const handleSelectCampus = (newCampus: Campus) => {
@@ -360,7 +447,7 @@ export default function App() {
     setCurrentStep(step);
   };
 
-  const handleLoginSuccess = (userData: { name: string; email: string; role?: string }) => {
+  const handleLoginSuccess = (userData: AuthUser) => {
     const authedUser: AuthUser = { ...userData, isGuest: false };
     setUser(authedUser);
     setCurrentView('dashboard');
@@ -407,23 +494,49 @@ export default function App() {
     setCurrentView('planner');
   };
 
-  const handleLogout = () => {
-    setUser(null);
-    setCurrentView('auth');
-    setCurrentStep(1);
-    setSelectedCampus(null);
-    setLocations([]);
-    setEntryGate(null);
-    setSelectedLocationId(null);
-    setPredictionResult(null);
-    setBinRecommendations(null);
-    setRoadBinRecommendations(null);
-    setRouteResult(null);
-    setPlanningError(null);
-    setRoutesError(null);
-    setIsPlanStale(false);
-    setStep1Completed(false);
+  const handleLogout = async () => {
+    try {
+      if (!user?.isGuest && isSupabaseConfigured) {
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.warn('[Bunbetsu Auth] Logout error:', err);
+    } finally {
+      setUser(null);
+      setCurrentView('auth');
+      setCurrentStep(1);
+      setSelectedCampus(null);
+      setLocations([]);
+      setEntryGate(null);
+      setSelectedLocationId(null);
+      setPredictionResult(null);
+      setBinRecommendations(null);
+      setRoadBinRecommendations(null);
+      setRouteResult(null);
+      setPlanningError(null);
+      setRoutesError(null);
+      setIsPlanStale(false);
+      setStep1Completed(false);
+    }
   };
+
+  if (isAuthInitializing) {
+    return (
+      <div className="h-screen w-screen bg-[#F4F7F4] flex flex-col justify-center items-center font-sans select-none">
+        <div className="flex flex-col items-center gap-3">
+          <img
+            src="/bunbetsu-logo.png"
+            alt="Bünbetsu"
+            className="h-10 w-auto object-contain select-none drop-shadow-xs"
+          />
+          <div className="flex items-center gap-2 text-xs font-semibold text-[#5A6E62]">
+            <div className="w-3.5 h-3.5 border-2 border-[#094120]/30 border-t-[#094120] rounded-full animate-spin" />
+            <span>Restoring session...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (currentView === 'auth' || !user) {
     return (

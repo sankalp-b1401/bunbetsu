@@ -6,15 +6,18 @@ import {
   EyeOff,
   ArrowRight,
   CheckCircle2,
+  AlertCircle,
   X,
 } from "lucide-react";
+import {
+  supabase,
+  isSupabaseConfigured,
+  buildAuthUserFromSession,
+} from "../../lib/supabase";
+import { AuthUser } from "../../types/bunbetsu";
 
 interface AuthPageProps {
-  onLoginSuccess: (user: {
-    name: string;
-    email: string;
-    role?: string;
-  }) => void;
+  onLoginSuccess: (user: AuthUser) => void;
   onContinueAsGuest?: () => void;
 }
 
@@ -29,61 +32,143 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
-  // Handle form submit
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle form submit (real Supabase signup & login)
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setPendingConfirmation(false);
+
+    if (!isSupabaseConfigured) {
+      setErrorMessage(
+        "Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env"
+      );
+      return;
+    }
+
     setIsLoading(true);
 
-    const combinedName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    try {
+      if (authMode === "signup") {
+        if (!firstName.trim() || !lastName.trim()) {
+          setErrorMessage("Please enter both your first and last name.");
+          setIsLoading(false);
+          return;
+        }
 
-    // Simulate snappy authentication flow
-    setTimeout(() => {
+        // Call supabase.auth.signUp with user metadata containing first_name and last_name
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+            },
+            emailRedirectTo: `${window.location.origin}/`,
+          },
+        });
+
+        if (error) {
+          setErrorMessage(error.message);
+          setIsLoading(false);
+          return;
+        }
+
+        // Treat email-confirmation-required signup as pending confirmation, NOT as an authenticated session
+        if (data.user && !data.session) {
+          setPendingConfirmation(true);
+          setToastMessage(
+            `Verification email sent to ${email.trim()}. Please verify your email before logging in.`
+          );
+          setTimeout(() => setToastMessage(null), 6000);
+          setIsLoading(false);
+          return;
+        }
+
+        // Only call onLoginSuccess callback when a valid session exists
+        if (data.session && data.user) {
+          const authUser = await buildAuthUserFromSession(data.user);
+          if (authUser) {
+            onLoginSuccess(authUser);
+          }
+        }
+      } else {
+        // Login mode: call supabase.auth.signInWithPassword
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
+        if (error) {
+          setErrorMessage(error.message);
+          setIsLoading(false);
+          return;
+        }
+
+        // Only call onLoginSuccess callback when a valid session exists
+        if (data.session && data.user) {
+          const authUser = await buildAuthUserFromSession(data.user);
+          if (authUser) {
+            onLoginSuccess(authUser);
+          }
+        } else {
+          setErrorMessage("Unable to establish an authenticated session. Please verify your credentials.");
+        }
+      }
+    } catch (err: any) {
+      setErrorMessage(
+        err?.message || "An unexpected error occurred during authentication."
+      );
+    } finally {
       setIsLoading(false);
-      onLoginSuccess({
-        name:
-          authMode === "signup" && combinedName
-            ? combinedName
-            : email.trim()
-            ? email
-                .split("@")[0]
-                .replace(/[._-]/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase())
-            : "Aarav Sharma",
-        email: email.trim() || "aarav.sharma@university.edu",
-        role: "Sustainability Lead",
-      });
-    }, 450);
+    }
   };
 
-  // Handle Google Social Sign-in
-  const handleGoogleSignIn = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      onLoginSuccess({
-        name: "Aarav Sharma",
-        email: "aarav.sharma@university.edu",
-        role: "Sustainability Lead",
-      });
-    }, 400);
-  };
 
-  // Handle Forgot Password submit
-  const handleSendReset = (e: React.FormEvent) => {
+  // Handle Forgot Password submit via supabase.auth.resetPasswordForEmail
+  const handleSendReset = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetEmail.trim()) return;
+    setResetError(null);
+
+    if (!isSupabaseConfigured) {
+      setResetError(
+        "Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in .env"
+      );
+      return;
+    }
+
     setResetSent(true);
-    setTimeout(() => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        resetEmail.trim(),
+        {
+          redirectTo: `${window.location.origin}/`,
+        }
+      );
+
+      if (error) {
+        setResetError(error.message);
+        setResetSent(false);
+        return;
+      }
+
       setResetSent(false);
       setShowForgotModal(false);
-      setToastMessage(`Password reset link dispatched to ${resetEmail}`);
-      setTimeout(() => setToastMessage(null), 4000);
-    }, 1200);
+      setToastMessage(`Password reset link dispatched to ${resetEmail.trim()}`);
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err: any) {
+      setResetError(err?.message || "Failed to dispatch password reset email.");
+      setResetSent(false);
+    }
   };
 
   return (
@@ -91,7 +176,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-[#0D3820] text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-4 h-4 text-[#70D000]" />
+          <CheckCircle2 className="w-4 h-4 text-[#70D000] shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -110,7 +195,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         {/* Centered Authentication Card */}
         <div className="w-full bg-white rounded-2xl p-5 sm:p-6 shadow-[0_4px_30px_rgba(0,0,0,0.03)] border border-[#E3ECE1] transition-all">
           {/* Card Header */}
-          <div className="text-center space-y-0.5">
+          <div className="text-center space-y-0.5 mb-4">
             <h2 className="font-heading font-bold text-xl sm:text-2xl text-[#103822] tracking-tight">
               Welcome to Bunbetsu
             </h2>
@@ -121,41 +206,28 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </p>
           </div>
 
-          {/* Continue with Google Button */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={isLoading}
-            className="w-full mt-4 py-2 px-3.5 rounded-xl border border-[#D7E3D6] hover:bg-neutral-50/80 active:bg-neutral-100 transition flex items-center justify-center gap-2 text-xs font-semibold text-[#1F2937] shadow-2xs cursor-pointer select-none"
-          >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-              />
-            </svg>
-            <span>Continue with Google</span>
-          </button>
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="mb-3 p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+              <span className="leading-tight">{errorMessage}</span>
+            </div>
+          )}
 
-          {/* OR Divider */}
-          <div className="relative my-3 flex items-center justify-center">
-            <div className="w-full border-t border-[#E1EBE0]" />
-            <span className="absolute bg-white px-2.5 text-[10px] font-medium text-[#7D9183] uppercase tracking-wider">
-              OR
-            </span>
-          </div>
+          {/* Pending Email Confirmation Banner */}
+          {pendingConfirmation && (
+            <div className="mb-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-[#0D4421] space-y-1 animate-in fade-in">
+              <div className="font-bold flex items-center gap-1.5 text-xs text-[#0D4421]">
+                <CheckCircle2 className="w-4 h-4 text-[#70D000] shrink-0" />
+                <span>Verification Email Sent</span>
+              </div>
+              <p className="text-[11px] text-[#2C5237] leading-relaxed">
+                A verification link was dispatched to{" "}
+                <span className="font-semibold text-[#0B3A1C]">{email}</span>.
+                Please verify your email address to complete registration before logging in.
+              </p>
+            </div>
+          )}
 
           {/* Email & Password Form */}
           <form onSubmit={handleSubmit} className="space-y-2.5">
@@ -172,7 +244,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="First name"
-                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                    disabled={isLoading}
+                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white disabled:opacity-60"
                   />
                 </div>
                 <div>
@@ -185,7 +258,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     placeholder="Last name"
-                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                    disabled={isLoading}
+                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -204,7 +278,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@university.edu"
-                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  disabled={isLoading}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white disabled:opacity-60"
                 />
               </div>
             </div>
@@ -222,7 +297,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-9 pr-9 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  disabled={isLoading}
+                  className="w-full pl-9 pr-9 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white disabled:opacity-60"
                 />
                 <button
                   type="button"
@@ -246,6 +322,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   type="button"
                   onClick={() => {
                     setResetEmail(email.trim());
+                    setResetError(null);
                     setShowForgotModal(true);
                   }}
                   className="text-[11px] font-bold text-[#0D4421] hover:underline cursor-pointer transition"
@@ -259,7 +336,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-1.5 py-2.5 rounded-xl bg-[#094120] hover:bg-[#073419] active:bg-[#052712] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer font-sans"
+              className="w-full mt-1.5 py-2.5 rounded-xl bg-[#094120] hover:bg-[#073419] active:bg-[#052712] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer font-sans disabled:opacity-60"
             >
               <span>{authMode === "login" ? "Login" : "Create account"}</span>
               {isLoading ? (
@@ -277,7 +354,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 Don&apos;t have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => setAuthMode("signup")}
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setErrorMessage(null);
+                    setPendingConfirmation(false);
+                  }}
                   className="font-bold text-[#094120] underline hover:text-[#062D15] cursor-pointer"
                 >
                   Create account
@@ -288,7 +369,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 Already have an account?{" "}
                 <button
                   type="button"
-                  onClick={() => setAuthMode("login")}
+                  onClick={() => {
+                    setAuthMode("login");
+                    setErrorMessage(null);
+                    setPendingConfirmation(false);
+                  }}
                   className="font-bold text-[#094120] underline hover:text-[#062D15] cursor-pointer"
                 >
                   Login
@@ -322,7 +407,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               </h3>
               <button
                 type="button"
-                onClick={() => setShowForgotModal(false)}
+                onClick={() => {
+                  setShowForgotModal(false);
+                  setResetError(null);
+                }}
                 className="p-1 rounded-md text-[#667267] hover:text-[#202820] hover:bg-neutral-100 transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -332,6 +420,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
               Enter your institutional email address and we&apos;ll dispatch a
               password reset link to your inbox.
             </p>
+
+            {resetError && (
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 mt-0.5" />
+                <span className="leading-tight">{resetError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSendReset} className="space-y-3.5">
               <input
                 type="email"
@@ -339,12 +435,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 value={resetEmail}
                 onChange={(e) => setResetEmail(e.target.value)}
                 placeholder="you@university.edu"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] text-xs sm:text-sm text-[#113821]"
+                disabled={resetSent}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] text-xs sm:text-sm text-[#113821] disabled:opacity-60"
               />
               <button
                 type="submit"
                 disabled={resetSent}
-                className="w-full py-2.5 rounded-xl bg-[#094120] text-white font-bold text-xs hover:bg-[#073419] transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-[#094120] text-white font-bold text-xs hover:bg-[#073419] transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {resetSent ? (
                   <span>Sending reset link...</span>
