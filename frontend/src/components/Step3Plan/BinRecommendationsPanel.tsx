@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   BinRecommendationResult,
   CampusLocation,
@@ -13,8 +13,6 @@ import {
   AlertTriangle,
   MapPin,
   X,
-  CheckCircle2,
-  Info,
 } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 
@@ -36,8 +34,6 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
   onDeselectLocation,
   loading = false,
 }) => {
-  const [activeTab, setActiveTab] = useState<'on-location' | 'road-bins'>('on-location');
-
   if (loading) {
     return (
       <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs space-y-2.5 animate-pulse font-sans h-full flex flex-col justify-between">
@@ -71,60 +67,28 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     selectedLocationId ||
     'Selected Location';
 
-  // Render Card Header
+  // Render Card Header (without tab toggle pill)
   const renderHeader = () => (
-    <div className="flex items-center justify-between pb-1.5 border-b border-[#E1E8DE]">
+    <div className="flex items-center justify-between pb-2 border-b border-[#E1E8DE] shrink-0">
       <div className="flex items-center gap-1.5">
         <Trash2 className="w-4 h-4 text-[#004B20]" />
         <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
           Bin recommendations
         </h3>
-        <InfoTooltip content="View on-location event bins, roadside stream placement stations, or select a location on the map." />
+        <InfoTooltip content="View total on-site and roadside bin counts, or select a zone on the map to inspect location details." />
       </div>
 
-      <div className="flex items-center gap-1">
-        {!selectedLocationId && (
-          <div className="flex items-center bg-[#F4F6F0] p-0.5 rounded-lg border border-[#E1E8DE]">
-            <button
-              type="button"
-              onClick={() => setActiveTab('on-location')}
-              className={`px-2 py-0.5 text-[10px] font-bold rounded transition cursor-pointer ${
-                activeTab === 'on-location'
-                  ? 'bg-white text-[#004B20] shadow-2xs'
-                  : 'text-[#667267] hover:text-[#202820]'
-              }`}
-            >
-              On-location
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('road-bins')}
-              className={`px-2 py-0.5 text-[10px] font-bold rounded transition cursor-pointer flex items-center gap-1 ${
-                activeTab === 'road-bins'
-                  ? 'bg-white text-[#004B20] shadow-2xs'
-                  : 'text-[#667267] hover:text-[#202820]'
-              }`}
-            >
-              <span>Road Bins</span>
-              {roadBinRecommendations && roadBinRecommendations.total_road_bins > 0 && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block" />
-              )}
-            </button>
-          </div>
-        )}
-
-        {selectedLocationId && onDeselectLocation && (
-          <button
-            type="button"
-            onClick={onDeselectLocation}
-            className="text-[10px] font-bold text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] px-1.5 py-0.5 rounded border border-[#70D000]/30 transition cursor-pointer flex items-center gap-0.5"
-            title="Return to event-level bin summary"
-          >
-            <span>All bins</span>
-            <X className="w-3 h-3" />
-          </button>
-        )}
-      </div>
+      {selectedLocationId && onDeselectLocation && (
+        <button
+          type="button"
+          onClick={onDeselectLocation}
+          className="text-[10px] font-bold text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] px-1.5 py-0.5 rounded border border-[#70D000]/30 transition cursor-pointer flex items-center gap-0.5"
+          title="Return to event-level bin summary"
+        >
+          <span>All bins</span>
+          <X className="w-3 h-3" />
+        </button>
+      )}
     </div>
   );
 
@@ -134,7 +98,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     return (
       <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
         {renderHeader()}
-        <div className="my-auto py-3 text-center space-y-1.5">
+        <div className="flex-1 flex flex-col items-center justify-center py-3 text-center space-y-1.5 min-h-0">
           <ShieldAlert className="w-6 h-6 text-amber-600 mx-auto" />
           <p className="text-xs font-bold text-[#202820]">
             {isOnLocationFailed ? 'Bin placement unsuccessful' : 'Bin model results unavailable'}
@@ -157,7 +121,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
       return (
         <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
           {renderHeader()}
-          <div className="my-auto py-3 text-center space-y-2">
+          <div className="flex-1 flex flex-col items-center justify-center py-3 text-center space-y-2 min-h-0">
             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[10.5px] font-bold mx-auto">
               <MapPin className="w-3 h-3 text-amber-700" />
               <span className="truncate max-w-[180px]">{selectedLocationName}</span>
@@ -191,7 +155,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
       return (
         <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
           {renderHeader()}
-          <div className="my-auto py-2 text-center space-y-2">
+          <div className="flex-1 flex flex-col items-center justify-center py-2 text-center space-y-2 min-h-0">
             <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-900 border border-rose-200 text-[10.5px] font-bold mx-auto">
               <MapPin className="w-3 h-3 text-rose-700" />
               <span className="truncate max-w-[180px]">{selectedLocationName}</span>
@@ -213,7 +177,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
       );
     }
 
-    // Normal Location-Specific Details
+    // Normal Location-Specific Details (preserved)
     const locPhysicalBins =
       selectedLocation.total_physical_bins ?? selectedLocation.recommended_bins?.central ?? 0;
     const locRecyclableBins = selectedLocation.recyclable?.physical_bins;
@@ -221,25 +185,23 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     const locEmptyingTurns = selectedLocation.required_emptying_turns?.central;
     const locTurnsLow = selectedLocation.required_emptying_turns?.low;
     const locTurnsHigh = selectedLocation.required_emptying_turns?.high;
-    const hasStreamBreakdown =
-      locRecyclableBins !== undefined || locDisposableBins !== undefined;
 
     return (
       <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
         {renderHeader()}
 
-        {/* Selected Location Pill */}
-        <div className="flex items-center justify-between p-1 px-2 bg-[#EAF5E6] rounded-lg border border-[#70D000]/30 text-xs mt-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
-            <span className="font-bold text-[#004B20] truncate">{selectedLocationName}</span>
+        <div className="flex-1 flex flex-col justify-center gap-2 py-2 min-h-0">
+          {/* Selected Location Pill */}
+          <div className="flex items-center justify-between p-1 px-2 bg-[#EAF5E6] rounded-lg border border-[#70D000]/30 text-xs shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
+              <span className="font-bold text-[#004B20] truncate">{selectedLocationName}</span>
+            </div>
+            <span className="text-[10px] text-[#667267] font-medium shrink-0">Zone inspection</span>
           </div>
-          <span className="text-[10px] text-[#667267] font-medium shrink-0">Zone inspection</span>
-        </div>
 
-        <div className="flex flex-col gap-1.5 my-auto py-1">
-          {/* 2x2 Grid matching the wireframe */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* 2x2 Grid matching location view */}
+          <div className="grid grid-cols-2 gap-2 flex-1">
             {/* Tile 1: Total Bins */}
             <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 flex flex-col justify-between">
               <div>
@@ -341,7 +303,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
 
           {/* Shortfall or Capacity Warnings */}
           {selectedLocation.capacity_shortfall_litres > 0 && (
-            <div className="flex items-start gap-1.5 p-1.5 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 text-[9.5px] leading-tight">
+            <div className="flex items-start gap-1.5 p-1.5 bg-amber-50 rounded-lg border border-amber-200 text-amber-800 text-[9.5px] leading-tight shrink-0">
               <AlertTriangle className="w-3 h-3 shrink-0 text-amber-600 mt-0.5" />
               <span>
                 Rounding leaves ~{Math.round(selectedLocation.capacity_shortfall_litres)} L daily capacity shortfall.
@@ -362,58 +324,57 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
       ? roadBinRecommendations.total_road_bins
       : '—';
 
-  const recyclableBins =
+  const onSiteRecyclable =
     binRecommendations?.streamBreakdownAvailable &&
     binRecommendations?.streamCounts?.recyclable !== undefined
       ? binRecommendations.streamCounts.recyclable
-      : '—';
+      : 0;
 
-  const disposableBins =
+  const onSiteDisposable =
     binRecommendations?.streamBreakdownAvailable &&
     binRecommendations?.streamCounts?.disposable !== undefined
       ? binRecommendations.streamCounts.disposable
-      : '—';
+      : 0;
 
-  // Road Bins variables
-  const roadPhysicalBins = roadBinRecommendations?.total_road_bins ?? 0;
-  const roadStations =
-    roadBinRecommendations?.total_stations ??
-    roadBinRecommendations?.placements?.length ??
-    0;
+  const hasStreamBreakdown = Boolean(binRecommendations?.streamBreakdownAvailable);
+
   const roadDisposableBins =
     roadBinRecommendations?.total_disposable_physical_bins ??
     roadBinRecommendations?.placements?.filter(
       (p) => p.stream_types?.includes('Disposable') || p.stream_type?.includes('Disposable')
     ).length ??
     0;
+
   const roadRecyclableBins =
     roadBinRecommendations?.total_recyclable_physical_bins ??
     roadBinRecommendations?.placements?.filter(
       (p) => p.stream_types?.includes('Recyclable') || p.stream_type?.includes('Recyclable')
     ).length ??
     0;
-  const coveredLocCount = roadBinRecommendations?.covered_location_ids?.length ?? 0;
-  const totalLocRequired = roadBinRecommendations?.total_locations_requiring_coverage ?? 0;
-  const uncoveredDis = roadBinRecommendations?.uncovered_disposable_location_ids?.length ?? 0;
-  const uncoveredRec = roadBinRecommendations?.uncovered_recyclable_location_ids?.length ?? 0;
-  const spacingPassed = roadBinRecommendations?.spacing_validation_passed ?? true;
-  const solverName = roadBinRecommendations?.solver_name ?? 'highs';
-  const isOptimal = roadBinRecommendations?.optimality_proven ?? false;
+
+  // Requirement 3: Recyclable Bins and Disposable Bins are a result of total bins (on-site + road)
+  const totalRecyclableBins = hasStreamBreakdown
+    ? onSiteRecyclable + roadRecyclableBins
+    : '—';
+
+  const totalDisposableBins = hasStreamBreakdown
+    ? onSiteDisposable + roadDisposableBins
+    : '—';
 
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
       {renderHeader()}
 
-      {activeTab === 'on-location' ? (
-        /* 2x2 Event-Level Grid matching wireframe */
-        <div className="grid grid-cols-2 gap-2 my-auto py-1">
-          {/* Tile 1: Total Bins */}
+      {/* 2x2 Event-Level Grid */}
+      <div className="flex-1 flex flex-col justify-center py-2 min-h-0">
+        <div className="grid grid-cols-2 gap-2 flex-1">
+          {/* Tile 1: On-site Bins */}
           <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-emerald-800">
                 <Trash2 className="w-3.5 h-3.5 shrink-0 text-[#004B20]" />
                 <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                  Total Bins
+                  On-site Bins
                 </span>
               </div>
               <p className="text-[10px] text-[#667267] font-medium mt-0.5">
@@ -430,37 +391,30 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
             </div>
           </div>
 
-          {/* Tile 2: Road bins */}
-          <div
-            onClick={() => setActiveTab('road-bins')}
-            className="p-2 sm:p-2.5 bg-amber-50/60 hover:bg-amber-100/60 rounded-xl border border-amber-200/80 flex flex-col justify-between cursor-pointer transition"
-            title="Click to view detailed Road Bins breakdown"
-          >
+          {/* Tile 2: Road Bins */}
+          <div className="p-2 sm:p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-col justify-between">
             <div>
-              <div className="flex items-center justify-between text-amber-900">
-                <div className="flex items-center gap-1.5">
-                  <div className="flex items-center -space-x-1">
-                    <span
-                      className="w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
-                      title="Disposable"
-                    >
-                      🗑️
-                    </span>
-                    <span
-                      className="w-3.5 h-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
-                      title="Recyclable"
-                    >
-                      ♻️
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                    Road bins
+              <div className="flex items-center gap-1.5 text-amber-900">
+                <div className="flex items-center -space-x-1">
+                  <span
+                    className="w-3.5 h-3.5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
+                    title="Disposable"
+                  >
+                    🗑️
+                  </span>
+                  <span
+                    className="w-3.5 h-3.5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[8px] font-bold shadow-2xs"
+                    title="Recyclable"
+                  >
+                    ♻️
                   </span>
                 </div>
-                <span className="text-[9px] text-[#004B20] font-bold underline">Details →</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                  Road Bins
+                </span>
               </div>
               <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                Dual-stream placement
+                25 m corridor separation
               </p>
             </div>
             <div className="flex items-baseline gap-1.5 pt-1.5">
@@ -470,209 +424,67 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
               <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
                 {roadBinRecommendations?.total_stations !== undefined
                   ? `bins (${roadBinRecommendations.total_stations} stn)`
-                  : 'road stations'}
+                  : 'road bins'}
               </span>
             </div>
           </div>
 
-          {/* Tile 3: Recyclable bins */}
+          {/* Tile 3: Recyclable Bins (total = on-site + road) */}
           <div className="p-2 sm:p-2.5 bg-[#F0FDF4] rounded-xl border border-emerald-200/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-emerald-900">
                 <Recycle className="w-3.5 h-3.5 text-emerald-700" />
                 <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                  Recyclable
+                  Recyclable Bins
                 </span>
               </div>
               <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                On-site recyclable stream
+                {hasStreamBreakdown && roadRecyclableBins > 0
+                  ? `${onSiteRecyclable} on-site + ${roadRecyclableBins} road`
+                  : 'Total recyclable stream'}
               </p>
             </div>
             <div className="flex items-baseline gap-1.5 pt-1.5">
               <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                {recyclableBins}
+                {totalRecyclableBins}
               </span>
               <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                on-site bins
+                total bins
               </span>
             </div>
           </div>
 
-          {/* Tile 4: Disposable bins */}
+          {/* Tile 4: Disposable Bins (total = on-site + road) */}
           <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-blue-900">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
                 <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                  Disposable
+                  Disposable Bins
                 </span>
               </div>
               <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                On-site disposable stream
+                {hasStreamBreakdown && roadDisposableBins > 0
+                  ? `${onSiteDisposable} on-site + ${roadDisposableBins} road`
+                  : 'Total disposable stream'}
               </p>
             </div>
             <div className="flex items-baseline gap-1.5 pt-1.5">
               <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                {disposableBins}
+                {totalDisposableBins}
               </span>
               <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                on-site bins
+                total bins
               </span>
             </div>
           </div>
         </div>
-      ) : (
-        /* ROAD BINS TAB VIEW */
-        <div className="flex flex-col gap-2 my-auto py-1">
-          {/* 2x2 Grid for Road Bins */}
-          <div className="grid grid-cols-2 gap-2">
-            {/* Tile 1: Total Physical Road Bins */}
-            <div className="p-2 sm:p-2.5 bg-blue-50/50 rounded-xl border border-blue-200/70 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 text-blue-900">
-                  <Trash2 className="w-3.5 h-3.5 shrink-0 text-blue-700" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                    Road Bins
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                  Total physical units
-                </p>
-              </div>
-              <div className="flex items-baseline gap-1.5 pt-1.5">
-                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                  {roadPhysicalBins}
-                </span>
-                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                  physical units
-                </span>
-              </div>
-            </div>
-
-            {/* Tile 2: Stations */}
-            <div className="p-2 sm:p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 text-amber-900">
-                  <MapPin className="w-3.5 h-3.5 shrink-0 text-amber-700" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                    Stations
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                  25 m corridor separation
-                </p>
-              </div>
-              <div className="flex items-baseline gap-1.5 pt-1.5">
-                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                  {roadStations}
-                </span>
-                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                  stations
-                </span>
-              </div>
-            </div>
-
-            {/* Tile 3: Recyclable Road Bins */}
-            <div className="p-2 sm:p-2.5 bg-[#F0FDF4] rounded-xl border border-emerald-200/80 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 text-emerald-900">
-                  <Recycle className="w-3.5 h-3.5 text-emerald-700" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                    Recyclable
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                  100–150 m radius
-                </p>
-              </div>
-              <div className="flex items-baseline gap-1.5 pt-1.5">
-                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                  {roadRecyclableBins}
-                </span>
-                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                  bins
-                </span>
-              </div>
-            </div>
-
-            {/* Tile 4: Disposable Road Bins */}
-            <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-1.5 text-blue-900">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
-                    Disposable
-                  </span>
-                </div>
-                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                  100–125 m radius
-                </p>
-              </div>
-              <div className="flex items-baseline gap-1.5 pt-1.5">
-                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
-                  {roadDisposableBins}
-                </span>
-                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                  bins
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Diagnostics & Coverage Status Card */}
-          <div className="p-2 bg-[#F4F6F0] rounded-xl border border-[#E1E8DE] space-y-1.5 text-[10px]">
-            {/* Coverage & Spacing Status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 text-[#202820] font-semibold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>
-                  {totalLocRequired > 0
-                    ? `Coverage: ${coveredLocCount}/${totalLocRequired} zones`
-                    : 'Coverage satisfied'}
-                </span>
-              </div>
-              <span className="text-[9.5px] text-[#667267]">
-                {spacingPassed ? '✓ 25m spacing verified' : '⚠️ Spacing warning'}
-              </span>
-            </div>
-
-            {/* Stream influence badges */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[9px] font-semibold">
-                🗑️ Disp: 100–125m
-              </span>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-semibold">
-                ♻️ Recyc: 100–150m
-              </span>
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-200 text-neutral-700 text-[9px] font-semibold ml-auto">
-                {isOptimal ? 'Optimal' : `Solver: ${solverName}`}
-              </span>
-            </div>
-
-            {/* Uncovered warnings if any */}
-            {(uncoveredDis > 0 || uncoveredRec > 0) && (
-              <div className="flex items-center gap-1 text-amber-800 bg-amber-50 p-1 rounded border border-amber-200">
-                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" />
-                <span>
-                  Uncovered: {uncoveredDis > 0 ? `${uncoveredDis} Disposable` : ''}{' '}
-                  {uncoveredRec > 0 ? `${uncoveredRec} Recyclable` : ''}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Discovery Prompt Footer */}
-      <div className="pt-1.5 border-t border-[#E1E8DE] flex items-center justify-between text-[10px] text-[#667267]">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
-          <span className="truncate">
-            {activeTab === 'road-bins'
-              ? 'Roadside corridor placements with 25 m separation and stream radii.'
-              : 'Click a map location to inspect its bin allocation & emptying turns.'}
-          </span>
-        </div>
+      <div className="pt-2 border-t border-[#E1E8DE] flex items-center gap-1.5 text-[10px] text-[#667267] shrink-0">
+        <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
+        <span className="truncate">Click a map location to inspect its bin allocation & emptying turns.</span>
       </div>
     </div>
   );
