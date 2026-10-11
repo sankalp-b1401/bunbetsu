@@ -260,6 +260,8 @@ class LocationInput:
     name: str
     activities: tuple[str, ...]
     area: float
+    location_id: str = ""
+    id: str = ""
 
     def validate(self) -> None:
         if not self.name.strip():
@@ -404,6 +406,7 @@ class LocationWasteAllocation:
     composition_kg: dict[str, Range]
     recyclable_kg: Range
     disposable_kg: Range
+    location_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -560,6 +563,7 @@ def _allocate_locations(
             location_composition["Food"].central + location_composition["Others"].central,
             location_composition["Food"].high + location_composition["Others"].high,
         )
+        loc_key = location.location_id or location.id or location.name
         allocations.append(
             LocationWasteAllocation(
                 location_name=location.name,
@@ -570,6 +574,7 @@ def _allocate_locations(
                 composition_kg=location_composition,
                 recyclable_kg=recyclable,
                 disposable_kg=disposable,
+                location_id=loc_key,
             )
         )
     return tuple(allocations)
@@ -580,13 +585,22 @@ def _build_heatmap_data(
 ) -> HeatmapData:
     """Build total/category/recyclable/disposable heatmap layers."""
     return HeatmapData(
-        total_waste_kg={a.location_name: a.total_waste_kg for a in allocations},
+        total_waste_kg={
+            (a.location_id or a.location_name): a.total_waste_kg for a in allocations
+        },
         category_waste_kg={
-            category: {a.location_name: a.composition_kg[category] for a in allocations}
+            category: {
+                (a.location_id or a.location_name): a.composition_kg[category]
+                for a in allocations
+            }
             for category in ("Food", "Plastic", "Paper", "Glass", "Others")
         },
-        recyclable_kg={a.location_name: a.recyclable_kg for a in allocations},
-        disposable_kg={a.location_name: a.disposable_kg for a in allocations},
+        recyclable_kg={
+            (a.location_id or a.location_name): a.recyclable_kg for a in allocations
+        },
+        disposable_kg={
+            (a.location_id or a.location_name): a.disposable_kg for a in allocations
+        },
     )
 
 

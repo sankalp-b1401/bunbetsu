@@ -24,6 +24,11 @@ import {
 } from "../../utils/geoUtils";
 import { ActivityLegend } from "./ActivityLegend";
 import { MapToolbar } from "./MapToolbar";
+import {
+  getHeatmapColorForRatio,
+  getHeatmapValueForLoc,
+  MISSING_HEATMAP_COLOR,
+} from "../../utils/heatmapPalettes";
 
 // Ensure MapLibre Web Worker resolves correctly in Vite / Cloud Run environments
 if (typeof window !== "undefined") {
@@ -178,33 +183,11 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     onSelectRouteRef.current = onSelectRoute;
   }, [onSelectRoute]);
 
-  const getHeatmapColorForRatio = (ratio: number): string => {
-    const r = Math.max(0, Math.min(1, ratio));
-    if (r <= 0.2) return "#10B981";
-    if (r <= 0.4) return "#34D399";
-    if (r <= 0.6) return "#FBBF24";
-    if (r <= 0.8) return "#F97316";
-    return "#EF4444";
-  };
-
-  const getHeatmapValueForLoc = (
-    locId: string,
-    mode: HeatmapMode = "none",
-    cat: WasteCategory = "Food",
-    data: HeatmapData | null = null,
-  ): number => {
-    if (!data || mode === "none") return 0;
-    if (mode === "total") return data.total_waste_kg?.[locId]?.central || 0;
-    if (mode === "category")
-      return data.category_waste_kg?.[locId]?.[cat]?.central || 0;
-    if (mode === "recyclable") return data.recyclable_kg?.[locId]?.central || 0;
-    if (mode === "disposable") return data.disposable_kg?.[locId]?.central || 0;
-    return 0;
-  };
-
   const buildZoneFeatures = (): Feature[] => {
-    const isHeatmapActive = heatmapMode && heatmapMode !== "none";
-    let maxHeatmap = 1;
+    const isHeatmapActive = Boolean(heatmapMode && heatmapMode !== "none");
+
+    // Collect all valid numeric estimates for active heatmap layer across candidate locations
+    const validNumericValues: number[] = [];
     if (isHeatmapActive && heatmapData) {
       locations.forEach((l) => {
         const val = getHeatmapValueForLoc(
@@ -213,12 +196,23 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           heatmapCategory,
           heatmapData,
         );
-        if (val > maxHeatmap) maxHeatmap = val;
+        if (val !== null && typeof val === "number" && Number.isFinite(val)) {
+          validNumericValues.push(val);
+        }
       });
     }
 
+    const maxHeatmap =
+      validNumericValues.length > 0 ? Math.max(...validNumericValues) : 0;
+    const minHeatmap =
+      validNumericValues.length > 0 ? Math.min(...validNumericValues) : 0;
+
     return locations
-      .filter((loc) => loc.geometry.type === "Polygon")
+      .filter(
+        (loc) =>
+          loc.geometry.type === "Polygon" ||
+          loc.geometry.type === "MultiPolygon",
+      )
       .map((loc) => {
         const hasAct = loc.activities && loc.activities.length > 0;
         const mainActivity = hasAct ? loc.activities[0] : null;
@@ -229,8 +223,10 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         const isSelected = loc.id === selectedLocationId;
 
         let heatmapColor = defaultColor;
-        let heatVal = 0;
-        let heatRatio = 0;
+        let heatVal: number | null = null;
+        let heatRatio: number | null = null;
+        let isMissingData = false;
+        let hasHeatmapValue = false;
 
         if (isHeatmapActive) {
           heatVal = getHeatmapValueForLoc(
@@ -239,8 +235,27 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             heatmapCategory,
             heatmapData,
           );
-          heatRatio = maxHeatmap > 0 ? heatVal / maxHeatmap : 0;
-          heatmapColor = getHeatmapColorForRatio(heatRatio);
+
+          if (heatVal === null) {
+            isMissingData = true;
+            hasHeatmapValue = false;
+            heatmapColor = MISSING_HEATMAP_COLOR;
+            heatRatio = null;
+          } else {
+            isMissingData = false;
+            hasHeatmapValue = true;
+            if (maxHeatmap > 0) {
+              heatRatio = Math.max(0, Math.min(1, heatVal / maxHeatmap));
+            } else {
+              // All valid values are zero -> avoid division by zero; display 0 intensity
+              heatRatio = 0;
+            }
+            heatmapColor = getHeatmapColorForRatio(
+              heatRatio,
+              heatmapMode,
+              heatmapCategory,
+            );
+          }
         }
 
         return {
@@ -256,6 +271,10 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             isHeatmapActive,
             heatVal,
             heatRatio,
+            isMissingData,
+            hasHeatmapValue,
+            heatmapMode,
+            heatmapCategory,
           },
           geometry: loc.geometry as any,
         };
@@ -737,7 +756,12 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           },
           paint: {
             "fill-color": ["get", "heatmapColor"],
-            "fill-opacity": 0.6,
+            "fill-opacity": [
+              "case",
+              ["get", "isMissingData"],
+              0.35,
+              0.65,
+            ],
           },
         });
 
@@ -1643,7 +1667,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`;
       }
 
-      const isHeatmapActive = heatmapMode && heatmapMode !== "none";
+      const isHeatmapActive = Boolean(heatmapMode && heatmapMode !== "none");
       const heatVal = isHeatmapActive
         ? getHeatmapValueForLoc(
             loc.id,
@@ -1651,9 +1675,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             heatmapCategory,
             heatmapData,
           )
-        : 0;
+        : null;
       const markerText =
-        isHeatmapActive && heatVal > 0
+        isHeatmapActive && heatVal !== null && heatVal > 0
           ? `${loc.name} <span class="font-bold text-[10px] ml-1 opacity-90">• ${Math.round(heatVal).toLocaleString()} kg</span>`
           : loc.name;
 

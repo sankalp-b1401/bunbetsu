@@ -12,6 +12,7 @@ import {
   FestPredictionPayload,
   PredictionResult,
 } from '../types/bunbetsu';
+import { normalizeHeatmapData } from '../utils/heatmapPalettes';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
 
@@ -215,7 +216,7 @@ export async function requestWastePrediction(
     activity_allocations: data.activity_allocations,
     location_allocations: locationAllocations,
     locationAllocations: locationAllocations,
-    heatmap_data: data.heatmap_data,
+    heatmap_data: normalizeHeatmapData(data.heatmap_data, locations),
     assumptions: data.assumptions,
     totalWasteKg,
     totalWasteTonnes,

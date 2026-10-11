@@ -37,8 +37,8 @@ interface PlanLayerControlsProps {
 
 const CATEGORY_OPTIONS: Array<{ value: WasteCategory; label: string; color: string }> = [
   { value: 'Food', label: 'Food waste', color: '#EA580C' },
-  { value: 'Plastic', label: 'Plastic', color: '#0284C7' },
-  { value: 'Paper', label: 'Paper', color: '#8B5CF6' },
+  { value: 'Plastic', label: 'Plastic', color: '#9333EA' },
+  { value: 'Paper', label: 'Paper', color: '#2563EB' },
   { value: 'Glass', label: 'Glass', color: '#0D9488' },
   { value: 'Others', label: 'Others', color: '#64748B' },
 ];

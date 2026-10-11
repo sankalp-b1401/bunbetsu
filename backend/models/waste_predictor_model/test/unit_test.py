@@ -215,3 +215,48 @@ def test_predefined_weights_drive_location_shares():
     assert shares["Literary"] == pytest.approx(2 / 16)
     assert shares["Sports"] == pytest.approx(1 / 16)
     assert shares["Hackathon"] == pytest.approx(1 / 16)
+
+
+def test_heatmap_uses_stable_location_id_when_provided():
+    locs = (
+        LocationInput(name="Food Stalls Quad", activities=("Food Stalls",), area=1500, location_id="loc_food_001"),
+        LocationInput(name="Main Arena", activities=("Music Concert",), area=3000, location_id="loc_arena_002"),
+    )
+    r = predict(inp(locations=locs))
+    h = r.heatmap_data
+    assert h is not None
+
+    # Total waste keys must be the stable location IDs
+    assert set(h.total_waste_kg.keys()) == {"loc_food_001", "loc_arena_002"}
+    assert "Food Stalls Quad" not in h.total_waste_kg
+
+    # Recyclable and Disposable keys must be the stable location IDs
+    assert set(h.recyclable_kg.keys()) == {"loc_food_001", "loc_arena_002"}
+    assert set(h.disposable_kg.keys()) == {"loc_food_001", "loc_arena_002"}
+
+    # Category nesting must be category-first, inner keys must be location IDs
+    assert set(h.category_waste_kg.keys()) == {"Food", "Plastic", "Paper", "Glass", "Others"}
+    for cat in h.category_waste_kg:
+        assert set(h.category_waste_kg[cat].keys()) == {"loc_food_001", "loc_arena_002"}
+        assert h.category_waste_kg[cat]["loc_food_001"] == r.location_allocations[0].composition_kg[cat]
+        assert h.category_waste_kg[cat]["loc_arena_002"] == r.location_allocations[1].composition_kg[cat]
+
+
+def test_duplicate_location_names_preserve_independent_heatmap_entries_with_ids():
+    # Two distinct locations sharing the same display name "Food Court"
+    locs = (
+        LocationInput(name="Food Court", activities=("Food Stalls",), area=1000, location_id="fc-north"),
+        LocationInput(name="Food Court", activities=("Food Stalls",), area=2000, location_id="fc-south"),
+    )
+    r = predict(inp(locations=locs))
+    h = r.heatmap_data
+    assert h is not None
+
+    # Both locations must exist as distinct entries without overwriting
+    assert set(h.total_waste_kg.keys()) == {"fc-north", "fc-south"}
+    assert len(h.total_waste_kg) == 2
+    assert "fc-north" in h.category_waste_kg["Food"]
+    assert "fc-south" in h.category_waste_kg["Food"]
+    assert "fc-north" in h.recyclable_kg
+    assert "fc-south" in h.disposable_kg
+

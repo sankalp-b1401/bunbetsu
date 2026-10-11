@@ -57,9 +57,15 @@ def test_prediction_valid():
     assert loc_allocs[1]["id"] == "loc-002"
     assert loc_allocs[2]["id"] == "loc-003"
 
-    # Heatmap data present
+    # Heatmap data present with stable location IDs as keys
     assert data["heatmap_data"] is not None
-    assert "Food Court" in data["heatmap_data"]["total_waste_kg"]
+    assert "loc-001" in data["heatmap_data"]["total_waste_kg"]
+    assert "loc-002" in data["heatmap_data"]["total_waste_kg"]
+    assert "loc-003" in data["heatmap_data"]["total_waste_kg"]
+    assert "Food" in data["heatmap_data"]["category_waste_kg"]
+    assert "loc-001" in data["heatmap_data"]["category_waste_kg"]["Food"]
+    assert "loc-001" in data["heatmap_data"]["recyclable_kg"]
+    assert "loc-001" in data["heatmap_data"]["disposable_kg"]
 
 
 def test_prediction_rejects_client_baseline_rate():

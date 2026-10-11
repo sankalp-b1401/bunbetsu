@@ -102,6 +102,7 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 name=loc.name.strip(),
                 activities=tuple(loc.activities),
                 area=float(loc.area),
+                location_id=loc.id,
             )
             m_loc.validate()
             model_locations.append(m_loc)

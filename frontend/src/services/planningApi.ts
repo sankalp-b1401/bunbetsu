@@ -21,6 +21,7 @@ import {
   RecommendedBinItem,
   RoadBinRecommendationResult,
 } from "../types/bunbetsu";
+import { normalizeHeatmapData } from "../utils/heatmapPalettes";
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || "";
 
@@ -316,7 +317,7 @@ export async function requestCampusPlan(
       activity_allocations: pred.activity_allocations,
       location_allocations: locationAllocations,
       locationAllocations,
-      heatmap_data: pred.heatmap_data,
+      heatmap_data: normalizeHeatmapData(pred.heatmap_data, locations),
       assumptions: pred.assumptions,
       totalWasteKg,
       totalWasteTonnes,

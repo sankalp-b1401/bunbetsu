@@ -224,6 +224,7 @@ async def predict_waste(request: WastePredictionRequest) -> WastePredictionRespo
                 name=loc.name,
                 activities=tuple(loc.activities),
                 area=float(loc.area),
+                location_id=loc.id,
             )
             model_loc.validate()
             model_locations.append(model_loc)

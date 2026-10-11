@@ -144,9 +144,29 @@ export interface LocationWasteAllocation {
 }
 
 export interface HeatmapData {
+  /**
+   * Total waste kg keyed by stable location ID (`loc.id`):
+   * total_waste_kg[locationId] = RangeModel
+   */
   total_waste_kg: Record<string, RangeModel>;
-  category_waste_kg: Record<string, Record<string, RangeModel>>;
+
+  /**
+   * Category-specific waste kg keyed category-first, then by stable location ID:
+   * category_waste_kg[category][locationId] = RangeModel
+   * Categories: "Food", "Plastic", "Paper", "Glass", "Others"
+   */
+  category_waste_kg: Record<WasteCategory | string, Record<string, RangeModel>>;
+
+  /**
+   * Recyclable waste kg keyed by stable location ID (`loc.id`):
+   * recyclable_kg[locationId] = RangeModel
+   */
   recyclable_kg: Record<string, RangeModel>;
+
+  /**
+   * Disposable waste kg keyed by stable location ID (`loc.id`):
+   * disposable_kg[locationId] = RangeModel
+   */
   disposable_kg: Record<string, RangeModel>;
 }
 

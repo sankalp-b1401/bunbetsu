@@ -10,7 +10,8 @@ import {
   RoutePlanResult,
 } from '../../types/bunbetsu';
 import { CampusMap } from '../Map/CampusMap';
-import { ChevronDown, Trash2, Recycle } from 'lucide-react';
+import { PlanLegend } from './PlanLegend';
+import { ChevronDown } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 
 interface PlanMapPanelProps {
@@ -118,63 +119,13 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
 
           {/* Floating Legend Dropdown Card */}
           {isLegendOpen && (
-            <div className="absolute right-0 top-full mt-1.5 z-50 w-72 bg-white rounded-xl border border-[#E1E8DE] shadow-xl p-3.5 font-sans space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between pb-1.5 border-b border-[#E1E8DE]">
-                <h4 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
-                  Map legend
-                </h4>
-                <span className="text-[10px] text-[#667267] font-medium">Symbols</span>
-              </div>
-
-              {/* Waste Intensity Gradient (Always displayed) */}
-              <div className="space-y-1 pb-1.5 border-b border-[#E1E8DE]">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-[#202820]">
-                  <span>Waste intensity (kg)</span>
-                </div>
-                <div className="h-2 rounded-full w-full bg-gradient-to-r from-[#10B981] via-[#FBBF24] via-[#F97316] to-[#EF4444] shadow-2xs" />
-                <div className="flex items-center justify-between text-[10px] text-[#667267] font-semibold">
-                  <span>Low</span>
-                  <span>High</span>
-                </div>
-              </div>
-
-              {/* Recommended Bins Legend */}
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded bg-[#2563EB] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
-                    <Trash2 className="w-3 h-3 text-white" />
-                  </div>
-                  <span className="text-[11px] font-medium text-[#202820]">
-                    Disposable bin (100L)
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded bg-[#16A34A] text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs">
-                    <Recycle className="w-3 h-3 text-white" />
-                  </div>
-                  <span className="text-[11px] font-medium text-[#202820]">
-                    Recyclable bin (100L)
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-[#D97706] ring-1.5 ring-amber-300 text-white flex items-center justify-center text-[10px] shrink-0 shadow-2xs font-bold">
-                    🚏
-                  </div>
-                  <span className="text-[11px] font-medium text-[#202820]">
-                    Road bin station (dual stream)
-                  </span>
-                </div>
-              </div>
-
-              {/* Event location zone */}
-              <div className="pt-1.5 border-t border-[#E1E8DE] text-xs">
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-3 rounded-xs border-2 border-dashed border-[#70D000] bg-[#EAF5E6]/60 shrink-0" />
-                  <span className="text-[11px] font-medium text-[#202820]">
-                    Event location zone
-                  </span>
-                </div>
-              </div>
+            <div className="absolute right-0 top-full mt-1.5 z-50 w-72 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+              <PlanLegend
+                heatmapMode={heatmapMode}
+                heatmapCategory={heatmapCategory}
+                heatmapData={heatmapData}
+                locations={locations}
+              />
             </div>
           )}
         </div>
