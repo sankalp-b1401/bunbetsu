@@ -1,4 +1,7 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   isPointInsideCampus,
   isPolygonContainedInCampus,
@@ -307,6 +310,28 @@ async function runEntryGateAndIsolationTests() {
   globalThis.fetch = originalFetch;
 
   console.log('✓ Planning client entry gate payload transmission and preflight validation passed');
+
+  // ---------------------------------------------------------------------------
+  // Test 5: Verify EventConfiguration Sidebar Entry Gate Card Format
+  // ---------------------------------------------------------------------------
+  const eventConfigPath = fileURLToPath(new URL('../src/components/Step2EventConfiguration/EventConfiguration.tsx', import.meta.url));
+  const eventConfigSource = fs.readFileSync(eventConfigPath, 'utf-8');
+
+  // Verify coordinates are not rendered in entryGate card
+  assert(
+    !eventConfigSource.includes('entryGate.coordinates[0].toFixed'),
+    'EventConfiguration sidebar entry gate card must not show coordinates'
+  );
+
+  // Verify fixed bins badge (1 Disp + 1 Rec) is not rendered
+  assert(
+    !eventConfigSource.includes('Fixed Bins: 1 Disp + 1 Rec') &&
+    !eventConfigSource.includes('Fixed Bins') &&
+    !eventConfigSource.includes('1 Disp + 1 Rec'),
+    'EventConfiguration sidebar entry gate card must not show fixed bins badge'
+  );
+
+  console.log('✓ EventConfiguration sidebar entry gate card excludes coordinates and fixed bins badge');
   console.log('All Entry Gate and Isolation tests passed successfully!');
 }
 

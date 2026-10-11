@@ -245,6 +245,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 selectedLocationId={selectedLocationId}
                 onDeselectLocation={handleClearLocationSelection}
                 loading={predictionLoading}
+                entryGate={entryGate}
               />
             </div>
           </div>

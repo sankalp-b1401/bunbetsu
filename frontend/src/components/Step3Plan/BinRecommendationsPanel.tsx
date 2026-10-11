@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BinRecommendationResult,
   CampusLocation,
+  EntryGate,
   LocationWasteAllocation,
   RoadBinRecommendationResult,
 } from '../../types/bunbetsu';
@@ -44,6 +45,7 @@ export interface BinRecommendationsPanelProps {
   selectedLocationId?: string | null;
   onDeselectLocation?: () => void;
   loading?: boolean;
+  entryGate?: EntryGate | null;
 }
 
 export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = ({
@@ -53,6 +55,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
   selectedLocationId = null,
   onDeselectLocation,
   loading = false,
+  entryGate = null,
 }) => {
   if (loading) {
     return (
@@ -338,25 +341,32 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
   // -------------------------------------------------------------------------
   // EVENT-LEVEL VIEW (default when no location is selected)
   // -------------------------------------------------------------------------
-  const totalOnSiteBins = binRecommendations?.totalBins ?? 0;
+  const gateOnSiteBins = entryGate ? 2 : 0;
+  const gateDisposableBins = entryGate ? 1 : 0;
+  const gateRecyclableBins = entryGate ? 1 : 0;
+
+  const totalOnSiteBins =
+    binRecommendations?.totalBins !== undefined && binRecommendations?.totalBins !== null
+      ? binRecommendations.totalBins + gateOnSiteBins
+      : (gateOnSiteBins > 0 ? gateOnSiteBins : 0);
   const totalRoadBins =
     roadBinRecommendations !== null && roadBinRecommendations !== undefined
       ? roadBinRecommendations.total_road_bins
       : '—';
 
   const onSiteRecyclable =
-    binRecommendations?.streamBreakdownAvailable &&
+    (binRecommendations?.streamBreakdownAvailable &&
     binRecommendations?.streamCounts?.recyclable !== undefined
       ? binRecommendations.streamCounts.recyclable
-      : 0;
+      : 0) + gateRecyclableBins;
 
   const onSiteDisposable =
-    binRecommendations?.streamBreakdownAvailable &&
+    (binRecommendations?.streamBreakdownAvailable &&
     binRecommendations?.streamCounts?.disposable !== undefined
       ? binRecommendations.streamCounts.disposable
-      : 0;
+      : 0) + gateDisposableBins;
 
-  const hasStreamBreakdown = Boolean(binRecommendations?.streamBreakdownAvailable);
+  const hasStreamBreakdown = Boolean(binRecommendations?.streamBreakdownAvailable || gateOnSiteBins > 0);
 
   const roadDisposableBins =
     roadBinRecommendations?.total_disposable_physical_bins ??
@@ -398,7 +408,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
                 </span>
               </div>
               <p className="text-[10px] text-[#667267] font-medium mt-0.5">
-                25 m perimeter spacing
+                {entryGate ? "Includes 2 gate bins" : "25 m perimeter spacing"}
               </p>
             </div>
             <div className="flex items-baseline gap-1.5 pt-1.5">
@@ -406,7 +416,7 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
                 {totalOnSiteBins}
               </span>
               <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
-                configured zones
+                {entryGate ? "zones + gate" : "configured zones"}
               </span>
             </div>
           </div>

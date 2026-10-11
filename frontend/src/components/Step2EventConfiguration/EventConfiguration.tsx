@@ -279,26 +279,21 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                 )}
               </div>
               {entryGate ? (
-                <div className="p-2.5 rounded-lg border border-[#004B20]/30 bg-[#F7F9F5] flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-[#004B20] text-[#70D000] flex items-center justify-center font-bold text-[11px]">
-                      🚪
-                    </div>
-                    <div>
-                      <div className="font-bold text-[#202820]">{entryGate.name}</div>
-                      <div className="text-[10px] text-[#667267]">
-                        [{entryGate.coordinates[0].toFixed(5)}, {entryGate.coordinates[1].toFixed(5)}]
-                      </div>
-                    </div>
+                <div className="p-2.5 rounded-lg border border-[#004B20]/30 bg-[#F7F9F5] flex items-center gap-2.5 text-xs">
+                  <div className="w-6 h-6 rounded-md bg-[#004B20] text-[#70D000] flex items-center justify-center font-bold text-[11px] shrink-0">
+                    🚪
                   </div>
-                  <span className="text-[10px] font-semibold text-[#004B20] bg-white px-2 py-0.5 rounded border border-[#E1E8DE]">
-                    Fixed Bins: 1 Disp + 1 Rec
-                  </span>
+                  <div className="font-bold text-[#202820]">
+                    {entryGate.name}
+                  </div>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 text-xs text-amber-900 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Use the <strong>Entry Gate tool</strong> on the map toolbar to place the gate inside the campus.</span>
+                  <span>
+                    Use the <strong>Entry Gate tool</strong> on the map toolbar
+                    to place the gate inside the campus.
+                  </span>
                 </div>
               )}
               {validationErrors.entryGate && (
@@ -334,8 +329,10 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                     No event locations selected yet
                   </p>
                   <p className="text-xs text-[#667267] font-medium max-w-[260px] mx-auto leading-relaxed">
-                    Click any campus zone on the map or use the drawing tool to
-                    configure locations.
+                    <span>
+                      Use the <strong>Add Location tool</strong> on the map
+                      toolbar to draw areas on the map.
+                    </span>
                   </p>
                 </div>
               )}
@@ -496,7 +493,9 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
             {validationErrors.entryGate && (
               <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <p className="leading-snug font-medium">{validationErrors.entryGate}</p>
+                <p className="leading-snug font-medium">
+                  {validationErrors.entryGate}
+                </p>
               </div>
             )}
             {predictionError && (

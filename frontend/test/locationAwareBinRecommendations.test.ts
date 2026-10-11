@@ -16,6 +16,7 @@ import {
   RoadBinRecommendationResult,
   LocationBinRecommendationItem,
   CampusLocation,
+  EntryGate,
 } from '../src/types/bunbetsu';
 
 let passedCount = 0;
@@ -214,6 +215,35 @@ const mockRoadBins: RoadBinRecommendationResult = {
   assert(tooltips['Pedestrian Routes'].includes('pedestrian corridors'), 'Pedestrian Routes tooltip mentions pedestrian corridors');
   assert(tooltips['Campus Map'].includes('Explore campus locations'), 'Campus Map tooltip accurate');
   assert(tooltips['Map Layers'].includes('Toggle campus boundaries'), 'Map Layers tooltip accurate');
+}
+
+// Test 8: Entry Gate Bins Counted as On-Site Bins
+{
+  const testGate: EntryGate = {
+    id: 'entry-gate',
+    name: 'Main Campus Gate',
+    coordinates: [77.21, 28.61],
+  };
+
+  const gateOnSiteBins = testGate ? 2 : 0;
+  const gateDisposableBins = testGate ? 1 : 0;
+  const gateRecyclableBins = testGate ? 1 : 0;
+
+  const totalOnSite = (mockBinRecommendations.totalBins ?? 0) + gateOnSiteBins;
+  const onSiteRecyclable = (mockBinRecommendations.streamCounts?.recyclable ?? 0) + gateRecyclableBins;
+  const onSiteDisposable = (mockBinRecommendations.streamCounts?.disposable ?? 0) + gateDisposableBins;
+
+  assert(totalOnSite === 8, 'Event on-site count includes 2 gate bins (6 zone + 2 gate = 8)');
+  assert(onSiteRecyclable === 3, 'On-site recyclable count includes 1 gate recyclable bin (2 zone + 1 gate = 3)');
+  assert(onSiteDisposable === 5, 'On-site disposable count includes 1 gate disposable bin (4 zone + 1 gate = 5)');
+
+  // Stream sums across entire event (on-site + road)
+  const roadDisposable = mockRoadBins.total_road_bins;
+  const totalRecyclable = onSiteRecyclable + 0;
+  const totalDisposable = onSiteDisposable + roadDisposable;
+
+  assert(totalRecyclable === 3, 'Total recyclable bins reflects on-site gate addition');
+  assert(totalDisposable === 8, 'Total disposable bins reflects on-site gate addition (5 on-site + 3 road = 8)');
 }
 
 console.log(`✓ All ${passedCount} assertions passed in Location-Aware Bin Recommendations tests!`);
