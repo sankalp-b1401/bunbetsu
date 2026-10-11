@@ -14,7 +14,7 @@ import {
 } from '../types/bunbetsu';
 import { normalizeHeatmapData } from '../utils/heatmapPalettes';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+const API_BASE_URL = ((import.meta as any).env?.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 export interface RequestWastePredictionParams {
   totalFootfall: number;

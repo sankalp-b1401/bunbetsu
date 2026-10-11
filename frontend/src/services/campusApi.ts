@@ -7,7 +7,7 @@
 import { Campus } from '../types/bunbetsu';
 import { calculateGeometryAreaM2 } from '../utils/geoUtils';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || '';
+const API_BASE_URL = ((import.meta as any).env?.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 export interface RawBackendCampus {
   osm_id: number;

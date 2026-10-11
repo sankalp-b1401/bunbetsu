@@ -84,7 +84,7 @@ const mockLocations: CampusLocation[] = [
     id: 'loc-1',
     name: 'Auditorium',
     area: 2000,
-    activities: ['Keynote'],
+    activities: ['Performing Arts'],
     tags: [],
     geometry: {
       type: 'Polygon',
@@ -270,7 +270,7 @@ async function runRoadBinIntegrationTests() {
 
   // Check 6: Switching campus clears road-bin results
   let currentCampusState: Campus = mockCampusA;
-  let activeRoadBinState: RoadBinRecommendationResult | null = planResult.roadBinRecommendations;
+  let activeRoadBinState: RoadBinRecommendationResult | null = planResult.roadBinRecommendations ?? null;
   assert(activeRoadBinState !== null, 'Initial road bin state exists');
 
   // User selects Campus B:

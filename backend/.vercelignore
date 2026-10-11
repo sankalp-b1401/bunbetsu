@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+pytest.ini
+api/test_*.py
+routes/test_*.py
+models/**/test/**
+

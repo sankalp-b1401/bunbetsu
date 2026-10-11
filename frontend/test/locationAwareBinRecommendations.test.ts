@@ -63,6 +63,7 @@ const mockLocation1: LocationBinRecommendationItem = {
     daily_volume_litres: 800,
     available_capacity_litres: 800,
     capacity_shortfall_litres: 0,
+    placements: [],
   },
   recyclable: {
     capacity_demand_bins: 2,
@@ -72,6 +73,7 @@ const mockLocation1: LocationBinRecommendationItem = {
     daily_volume_litres: 400,
     available_capacity_litres: 400,
     capacity_shortfall_litres: 0,
+    placements: [],
   },
 };
 
@@ -133,6 +135,7 @@ const mockRoadBins: RoadBinRecommendationResult = {
   total_popularity_score: 0.85,
   placements: [],
   warnings: [],
+  assumptions: [],
 };
 
 // Test 1: Event-Level Metrics extraction

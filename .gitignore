@@ -91,6 +91,7 @@ dist-ssr/
 # Framework and tooling caches
 .cache/
 .vite/
+.vercel/
 .eslintcache
 .stylelintcache
 *.tsbuildinfo
