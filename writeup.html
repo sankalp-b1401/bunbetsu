@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Bunbetsu: an intelligent waste prediction and spatial planning platform for college festivals.">
+  <title>Bunbetsu | Intelligent Waste Planning for College Festivals</title>
+  <style>
+    :root {
+      --ink: #17261f;
+      --muted: #61736a;
+      --paper: #f7f8f2;
+      --surface: #ffffff;
+      --green: #075b38;
+      --green-deep: #063b27;
+      --lime: #b9e769;
+      --mint: #e5f2dd;
+      --line: #dbe6d9;
+      --orange: #e66d27;
+      --blue: #2365a6;
+      --shadow: 0 18px 55px rgba(21, 63, 40, .10);
+      --display: Georgia, 'Times New Roman', serif;
+      --body: 'Trebuchet MS', 'Gill Sans', sans-serif;
+      --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: var(--body);
+      line-height: 1.7;
+    }
+    a { color: var(--green); }
+    img { max-width: 100%; display: block; }
+    code, pre { font-family: var(--mono); }
+    code {
+      padding: .12em .35em;
+      border-radius: 4px;
+      color: var(--green-deep);
+      background: #edf4e9;
+      font-size: .9em;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .85rem clamp(1rem, 4vw, 4rem);
+      color: #f9fff7;
+      background: rgba(6, 59, 39, .95);
+      border-bottom: 1px solid rgba(185, 231, 105, .25);
+      backdrop-filter: blur(14px);
+    }
+    .brand { font-weight: 800; letter-spacing: .08em; font-size: .82rem; }
+    .topbar a { color: #f9fff7; text-decoration: none; font-size: .8rem; opacity: .86; }
+    .topbar nav { display: flex; gap: 1.1rem; flex-wrap: wrap; justify-content: flex-end; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(4.5rem, 10vw, 8rem) clamp(1.2rem, 7vw, 8rem) clamp(4rem, 9vw, 7rem);
+      color: #f9fff7;
+      background:
+        radial-gradient(circle at 90% 10%, rgba(185, 231, 105, .24), transparent 28%),
+        linear-gradient(135deg, #063b27 0%, #075b38 58%, #23704b 100%);
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      width: 44rem;
+      height: 18rem;
+      right: -10rem;
+      bottom: -12rem;
+      border: 1px solid rgba(185, 231, 105, .28);
+      border-radius: 50%;
+      transform: rotate(-13deg);
+    }
+    .hero-inner { position: relative; z-index: 1; max-width: 1180px; margin: auto; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: 1.25rem;
+      color: var(--lime);
+      font-size: .76rem;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ''; width: 2.3rem; height: 2px; background: var(--lime); }
+    h1, h2, h3, h4 { line-height: 1.12; margin: 0 0 1rem; }
+    h1 { max-width: 950px; font-family: var(--display); font-size: clamp(3rem, 8vw, 7.6rem); font-weight: 500; letter-spacing: -.055em; }
+    .hero-lede { max-width: 720px; margin: 1.3rem 0 0; color: #dcebdd; font-size: clamp(1rem, 2vw, 1.25rem); }
+    .hero-meta { display: flex; gap: .7rem; flex-wrap: wrap; margin-top: 2rem; }
+    .pill { display: inline-flex; padding: .48rem .75rem; border: 1px solid rgba(220, 235, 221, .3); border-radius: 999px; color: #eef9ec; font-size: .78rem; }
+
+    .layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 2.5rem; max-width: 1180px; margin: 0 auto; padding: 3.5rem 1.2rem 6rem; }
+    .toc { position: sticky; top: 5rem; align-self: start; padding: 1rem; border-left: 2px solid var(--lime); }
+    .toc h2 { margin-bottom: .7rem; color: var(--green); font-family: var(--body); font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
+    .toc a { display: block; padding: .27rem 0; color: var(--muted); font-size: .78rem; text-decoration: none; }
+    .toc a:hover { color: var(--green); }
+
+    article { min-width: 0; }
+    section { scroll-margin-top: 5rem; margin-bottom: 4.5rem; }
+    section > h2 { padding-bottom: .8rem; border-bottom: 1px solid var(--line); color: var(--green-deep); font-family: var(--display); font-size: clamp(2rem, 4vw, 3.5rem); font-weight: 500; letter-spacing: -.035em; }
+    h3 { margin-top: 2rem; color: var(--green); font-size: 1.45rem; }
+    h4 { margin-top: 1.5rem; color: var(--green-deep); font-size: 1.05rem; }
+    p { margin: 0 0 1rem; }
+    ul, ol { padding-left: 1.35rem; }
+    li { margin: .3rem 0; }
+    strong { color: var(--green-deep); }
+    blockquote { margin: 1.5rem 0; padding: 1.1rem 1.3rem; border-left: 4px solid var(--orange); color: #40564a; background: #fffaf3; }
+
+    .intro-grid, .feature-grid, .stack-grid, .challenge-grid, .scope-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .feature-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stat, .feature, .stack-card, .challenge, .scope-card, .result-card { padding: 1.2rem; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 8px 28px rgba(21, 63, 40, .045); }
+    .stat strong { display: block; margin-bottom: .2rem; font-family: var(--display); font-size: 2rem; font-weight: 500; }
+    .stat span, .feature p, .stack-card p, .scope-card p { color: var(--muted); font-size: .91rem; }
+    .feature { position: relative; overflow: hidden; min-height: 175px; }
+    .feature::before { content: attr(data-number); position: absolute; top: .6rem; right: .9rem; color: var(--mint); font-family: var(--display); font-size: 2.8rem; }
+    .feature h3 { margin-top: 0; padding-right: 2.5rem; font-size: 1.08rem; }
+    .feature p { margin: 0; }
+    .stack-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .stack-card { border-top: 4px solid var(--green); }
+    .stack-card h3 { margin-top: 0; font-size: 1.05rem; }
+    .stack-card p { margin: 0; }
+
+    .diagram-shell { margin: 2rem 0; padding: 1.2rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; background: #eef5e9; }
+    .diagram-title { margin: .1rem 0 1rem; color: var(--muted); font-size: .78rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .architecture { display: grid; grid-template-columns: 1.1fr .18fr 1.4fr .18fr 1.15fr; align-items: stretch; min-width: 760px; gap: .65rem; }
+    .diagram-column { display: grid; gap: .55rem; }
+    .diagram-node { display: flex; align-items: center; justify-content: center; min-height: 58px; padding: .65rem; border: 1px solid #c5d8c1; border-radius: 10px; color: var(--green-deep); background: #fff; font-size: .78rem; font-weight: 800; text-align: center; }
+    .diagram-node.main { color: #fff; background: var(--green); border-color: var(--green); }
+    .diagram-node.accent { background: #fff5e8; border-color: #efc58f; }
+    .diagram-arrow { display: flex; align-items: center; justify-content: center; color: var(--green); font-size: 1.6rem; font-weight: 800; }
+    .workflow { display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); min-width: 850px; gap: .75rem; }
+    .workflow-step { position: relative; padding: 1rem .8rem; border: 1px solid #c5d8c1; border-radius: 12px; background: #fff; }
+    .workflow-step:not(:last-child)::after { content: '>'; position: absolute; top: 50%; right: -.75rem; color: var(--green); font-weight: 800; transform: translateY(-50%); }
+    .workflow-step b { display: block; margin-bottom: .35rem; color: var(--green); font-size: .78rem; }
+    .workflow-step span { display: block; color: var(--muted); font-size: .75rem; line-height: 1.4; }
+
+    .code-label { margin-top: 1.25rem; color: var(--muted); font-size: .76rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    pre { overflow-x: auto; margin: .45rem 0 1.25rem; padding: 1.15rem 1.25rem; border: 1px solid #274939; border-radius: 12px; color: #e8f6e3; background: #10291e; font-size: .82rem; line-height: 1.65; }
+    .formula { margin: 1.25rem 0; padding: 1.25rem; overflow-x: auto; border: 1px solid #d6e6cd; border-radius: 12px; color: var(--green-deep); background: var(--mint); font-family: var(--display); font-size: clamp(1.25rem, 3vw, 1.8rem); text-align: center; }
+
+    .screenshots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .shot { display: flex; flex-direction: column; justify-content: flex-end; min-height: 210px; padding: 1rem; border: 1px dashed #9fb59c; border-radius: 14px; background: linear-gradient(145deg, #e9f1e4, #fbfcf7 52%, #f4e8d7); }
+    .shot::before { content: '+'; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-bottom: auto; color: var(--green); border: 1px dashed var(--green); border-radius: 50%; font-size: 1.8rem; }
+    .shot strong { font-size: .98rem; }
+    .shot span { color: var(--muted); font-size: .78rem; }
+
+    .challenge-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .challenge { border-left: 4px solid var(--orange); }
+    .challenge h3 { margin-top: 0; font-size: 1.15rem; }
+    .challenge h4 { margin-top: 1rem; font-size: .83rem; letter-spacing: .1em; text-transform: uppercase; }
+    .challenge p, .challenge ul { color: var(--muted); font-size: .9rem; }
+    .scope-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .scope-card { border-top: 4px solid var(--blue); }
+    .scope-card h3 { margin-top: 0; font-size: 1.03rem; }
+    .scope-card p { margin: 0; }
+    .results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .result-card strong { display: block; margin-bottom: .35rem; font-size: 1.05rem; }
+    .result-card span { color: var(--muted); font-size: .88rem; }
+
+    .links { display: grid; gap: .8rem; }
+    .link-placeholder { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.15rem; border: 1px dashed #9fb59c; border-radius: 10px; background: #fff; }
+    .link-placeholder span { color: var(--muted); font-family: var(--mono); font-size: .82rem; }
+    .closing { padding: 2rem; border-radius: 18px; color: #f5fff0; background: linear-gradient(135deg, var(--green-deep), var(--green)); box-shadow: var(--shadow); }
+    .closing h2 { color: #fff; border: 0; }
+    .closing p { color: #d6ead3; }
+    footer { padding: 2rem 1.2rem; color: var(--muted); border-top: 1px solid var(--line); text-align: center; font-size: .8rem; }
+
+    @media (max-width: 900px) {
+      .layout { display: block; }
+      .toc { position: static; display: flex; gap: .75rem; overflow-x: auto; margin-bottom: 2.5rem; padding: .7rem 0; border-left: 0; border-bottom: 2px solid var(--lime); }
+      .toc h2 { display: none; }
+      .toc a { white-space: nowrap; }
+      .feature-grid, .stack-grid, .scope-grid, .results { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 620px) {
+      .topbar nav { display: none; }
+      .layout { padding-top: 2rem; }
+      .intro-grid, .feature-grid, .stack-grid, .challenge-grid, .scope-grid, .screenshots, .results { grid-template-columns: 1fr; }
+      h1 { font-size: clamp(2.8rem, 15vw, 5rem); }
+      section { margin-bottom: 3.5rem; }
+      .shot { min-height: 165px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">BUNBETSU / BUILD BHARAT</div>
+    <nav aria-label="Page navigation">
+      <a href="#solution">Solution</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#features">Features</a>
+      <a href="#implementation">Implementation</a>
+      <a href="#future">Future scope</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">AWS Build Bharat Hackathon · Waste & Energy</div>
+      <h1>Intelligent waste planning for college festivals.</h1>
+      <p class="hero-lede">Bunbetsu predicts event waste, maps where it will be generated, and recommends where bins should be placed before the first visitor arrives.</p>
+      <div class="hero-meta">
+        <span class="pill">React + TypeScript</span>
+        <span class="pill">FastAPI + Python</span>
+        <span class="pill">MapLibre + OpenStreetMap</span>
+        <span class="pill">Explainable planning model</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <aside class="toc" aria-label="Table of contents">
+      <h2>In this story</h2>
+      <a href="#summary">Project summary</a>
+      <a href="#problem">The problem</a>
+      <a href="#solution">Our solution</a>
+      <a href="#stack">Tech stack</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#features">Main features</a>
+      <a href="#implementation">Implementation</a>
+      <a href="#challenges">Challenges</a>
+      <a href="#testing">Testing & results</a>
+      <a href="#future">Learning & future</a>
+      <a href="#links">Project links</a>
+    </aside>
+
+    <main>
+      <article>
+        <section id="summary">
+          <div class="eyebrow">The project</div>
+          <h2>Bunbetsu in one sentence</h2>
+          <p>Bunbetsu is an intelligent waste-management and spatial-planning platform for college festivals and campus events. It turns an event description and a campus map into a pre-event waste and infrastructure plan.</p>
+          <div class="intro-grid">
+            <div class="stat"><strong>Predict</strong><span>Estimate total waste and its Food, Plastic, Paper, Glass, and Others composition.</span></div>
+            <div class="stat"><strong>Place</strong><span>Recommend on-site and roadside bins with map coordinates, streams, and emptying requirements.</span></div>
+            <div class="stat"><strong>Connect</strong><span>Build a campus pedestrian graph and identify important corridors between event zones.</span></div>
+            <div class="stat"><strong>Explain</strong><span>Show assumptions, ranges, warnings, and stage diagnostics instead of hiding uncertainty.</span></div>
+          </div>
+          <p>The project was built for the AWS Build Bharat Hackathon under the Waste and Energy theme.</p>
+        </section>
+
+        <section id="problem">
+          <div class="eyebrow">Why this matters</div>
+          <h2>College festivals are temporary cities</h2>
+          <p>For a few days, a campus may receive thousands of visitors. Food stalls, concerts, sports activities, exhibitions, workshops, and registration areas all generate different waste profiles. Yet waste planning often begins only after the event has started.</p>
+          <p>Organizers may not know how much waste to expect, how many bins are needed, where bins should go, or which pedestrian corridors will carry the most movement. This can produce overflowing bins, poor segregation, unnecessary collection trips, and bins in places where people rarely walk.</p>
+          <h3>The core problem</h3>
+          <ol>
+            <li>Too few bins in high-footfall areas.</li>
+            <li>Too many bins in low-demand areas.</li>
+            <li>Poor separation between recyclable and disposable waste.</li>
+            <li>Bins placed away from the routes people actually use.</li>
+            <li>No estimate of collection frequency or emptying requirements.</li>
+            <li>No location-wise understanding of event waste.</li>
+          </ol>
+          <blockquote>There was another important constraint: a new college festival rarely has a clean, event-specific historical dataset ready for machine-learning training. Waiting for perfect data would mean waiting before building the solution.</blockquote>
+          <p>That led us to an evidence-backed mathematical baseline: transparent enough to audit today, and structured enough to improve with real event data tomorrow.</p>
+        </section>
+
+        <section id="solution">
+          <div class="eyebrow">The answer</div>
+          <h2>From prediction to placement</h2>
+          <p>Bunbetsu combines four connected planning capabilities:</p>
+          <div class="feature-grid">
+            <div class="feature" data-number="01"><h3>Waste prediction</h3><p>Estimate total waste, uncertainty ranges, composition, and location-wise contributions.</p></div>
+            <div class="feature" data-number="02"><h3>On-location bins</h3><p>Convert waste into bin demand and place bins around event-zone boundaries.</p></div>
+            <div class="feature" data-number="03"><h3>Pedestrian routes</h3><p>Build a walking network from OpenStreetMap and score important corridors.</p></div>
+            <div class="feature" data-number="04"><h3>Road-bin planning</h3><p>Use route popularity, influence radii, and waste streams to recommend roadside stations.</p></div>
+            <div class="feature" data-number="05"><h3>Entry-gate planning</h3><p>Require an in-campus gate and include it as an origin in route analysis.</p></div>
+            <div class="feature" data-number="06"><h3>Partial results</h3><p>Keep valid waste and bin results available even when external route data fails.</p></div>
+          </div>
+          <p>The complete operation is exposed through <code>POST /api/planning/plan</code>. The backend executes the stages directly in Python and returns results, warnings, assumptions, and diagnostics together.</p>
+        </section>
+
+        <section id="stack">
+          <div class="eyebrow">Tools with a purpose</div>
+          <h2>Tech stack and why we chose it</h2>
+          <div class="stack-grid">
+            <div class="stack-card"><h3>React + TypeScript</h3><p>Component-based workflow with explicit contracts for campuses, GeoJSON, predictions, bins, and routes.</p></div>
+            <div class="stack-card"><h3>Vite + Tailwind CSS</h3><p>Fast development, efficient builds, responsive layouts, and consistent map-overlay styling.</p></div>
+            <div class="stack-card"><h3>MapLibre GL</h3><p>Interactive GeoJSON layers, polygons, markers, heatmaps, routes, and custom map controls.</p></div>
+            <div class="stack-card"><h3>FastAPI + Pydantic</h3><p>Typed APIs, validation, clear route organization, and automatic OpenAPI documentation.</p></div>
+            <div class="stack-card"><h3>Shapely + PyProj</h3><p>Geometry validation, containment, buffering, intersections, nearest points, and metre-based calculations.</p></div>
+            <div class="stack-card"><h3>NetworkX + SciPy</h3><p>Graph construction and route scoring, with numerical and optimization support for spatial planning.</p></div>
+            <div class="stack-card"><h3>OpenStreetMap Nominatim</h3><p>Search college and university locations, boundaries, addresses, coordinates, and state metadata.</p></div>
+            <div class="stack-card"><h3>OpenStreetMap Overpass</h3><p>Retrieve local walkable ways, buildings, and barriers to construct a campus-specific network.</p></div>
+            <div class="stack-card"><h3>NumPy + polygon-clipping</h3><p>Support numerical operations and browser-side polygon area, containment, and campus-mask utilities.</p></div>
+          </div>
+        </section>
+
+        <section id="architecture">
+          <div class="eyebrow">How the parts connect</div>
+          <h2>Architecture and workflow</h2>
+          <div class="diagram-shell">
+            <div class="diagram-title">System architecture</div>
+            <div class="architecture" role="img" aria-label="Architecture diagram showing the frontend, FastAPI planning orchestrator, models, external map services, and dashboard output.">
+              <div class="diagram-column">
+                <div class="diagram-node main">Event organizer</div>
+                <div class="diagram-node">React + TypeScript UI</div>
+                <div class="diagram-node">MapLibre campus map</div>
+              </div>
+              <div class="diagram-arrow">&rarr;</div>
+              <div class="diagram-column">
+                <div class="diagram-node main">FastAPI routes</div>
+                <div class="diagram-node">Campus search service</div>
+                <div class="diagram-node">Planning orchestrator</div>
+                <div class="diagram-node">Unified response + diagnostics</div>
+              </div>
+              <div class="diagram-arrow">&rarr;</div>
+              <div class="diagram-column">
+                <div class="diagram-node accent">CPCB waste model</div>
+                <div class="diagram-node accent">On-location bin model</div>
+                <div class="diagram-node accent">NetworkX route scoring</div>
+                <div class="diagram-node accent">Road-bin optimizer</div>
+                <div class="diagram-node">Nominatim + Overpass</div>
+              </div>
+            </div>
+          </div>
+          <div class="diagram-shell">
+            <div class="diagram-title">End-to-end user workflow</div>
+            <div class="workflow">
+              <div class="workflow-step"><b>01 · Search</b><span>Find the college campus.</span></div>
+              <div class="workflow-step"><b>02 · Configure</b><span>Add event name, days, and footfall.</span></div>
+              <div class="workflow-step"><b>03 · Draw</b><span>Select or draw event zones.</span></div>
+              <div class="workflow-step"><b>04 · Gate</b><span>Place the entry gate inside campus.</span></div>
+              <div class="workflow-step"><b>05 · Plan</b><span>Run waste, bin, and route stages.</span></div>
+              <div class="workflow-step"><b>06 · Inspect</b><span>View heatmaps, bins, and corridors.</span></div>
+              <div class="workflow-step"><b>07 · Act</b><span>Review and operationalize the plan.</span></div>
+            </div>
+          </div>
+          <p>The repository is organized into a React frontend and a FastAPI backend. The backend groups API routes, map acquisition, mathematical models, planning orchestration, and routing into separate modules.</p>
+          <pre>bunbetsu/
+├── backend/
+│   ├── api/       # HTTP endpoints
+│   ├── map/       # Nominatim campus search
+│   ├── models/    # Waste and bin models
+│   ├── planning/  # Unified orchestration
+│   └── routes/    # OSM graph and route scoring
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── services/
+│   │   ├── types/
+│   │   └── utils/
+│   └── test/
+└── writeup.md</pre>
+        </section>
+
+        <section id="features">
+          <div class="eyebrow">What the organizer can do</div>
+          <h2>Main features</h2>
+          <div class="feature-grid">
+            <div class="feature" data-number="01"><h3>Campus search</h3><p>Search by college name. Results are ranked using educational OSM types, campus keywords, and boundary geometry.</p></div>
+            <div class="feature" data-number="02"><h3>Interactive map</h3><p>View boundaries, draw zones, calculate areas, select locations, place gates, and inspect results.</p></div>
+            <div class="feature" data-number="03"><h3>Event configuration</h3><p>Set event name, duration, daily footfall, active zones, and activities.</p></div>
+            <div class="feature" data-number="04"><h3>Waste heatmaps</h3><p>Switch between total, category, recyclable, and disposable waste layers.</p></div>
+            <div class="feature" data-number="05"><h3>Bin recommendations</h3><p>See capacity demand, physical counts, streams, emptying turns, shortfalls, and coordinates.</p></div>
+            <div class="feature" data-number="06"><h3>Route intelligence</h3><p>See mapped paths, inferred connectors, obstacle flags, traffic scores, and key junctions.</p></div>
+          </div>
+
+          <h3>Screenshot placeholders</h3>
+          <p>These spaces are ready for screenshots from the working application.</p>
+          <div class="screenshots">
+            <div class="shot"><strong>Authentication page</strong><span>Login, sign-up, Google sign-in, password reset, and guest access.</span></div>
+            <div class="shot"><strong>Campus search</strong><span>Search overlay, campus boundary, metadata, and confirmation card.</span></div>
+            <div class="shot"><strong>Event configuration</strong><span>Event form, map toolbar, custom areas, activities, and entry gate.</span></div>
+            <div class="shot"><strong>Waste heatmap</strong><span>Total or category-specific waste intensity across event zones.</span></div>
+            <div class="shot"><strong>Bin placement</strong><span>On-site and roadside bin markers on the campus map.</span></div>
+            <div class="shot"><strong>Pedestrian routes</strong><span>Colored route corridors, connectors, and priority junctions.</span></div>
+            <div class="shot"><strong>Planning dashboard</strong><span>Final map, waste metrics, controls, route diagnostics, and bin details.</span></div>
+            <div class="shot"><strong>Replace this slot</strong><span>Add an image path later, such as <code>screenshots/planning-dashboard.png</code>.</span></div>
+          </div>
+        </section>
+
+        <section id="implementation">
+          <div class="eyebrow">Inside the engine</div>
+          <h2>Technical implementation</h2>
+          <h3>One request keeps the plan synchronized</h3>
+          <p>The frontend sends event details, campus geometry, the entry gate, and active event locations through one unified planning request.</p>
+          <pre>const payload = {
+  fest_name: eventDetails.festName.trim(),
+  total_footfall: eventDetails.expectedFootfall,
+  duration_days: eventDetails.durationDays,
+  campus_state: campus.state.trim(),
+  campus_boundary: campus.geometry,
+  entry_gate: {
+    id: entryGate.id,
+    name: entryGate.name,
+    coordinates: entryGate.coordinates,
+  },
+  locations: locations.map((location) => ({
+    id: location.id,
+    name: location.name.trim(),
+    area: location.area,
+    activities: location.activities,
+    geometry: location.geometry,
+    center: location.center,
+  })),
+};</pre>
+          <p>The client lives in <code>frontend/src/services/planningApi.ts</code>. The server endpoint is coordinated by <code>backend/planning/planner_service.py</code>.</p>
+
+          <h3>Waste prediction</h3>
+          <p>The core model is deterministic and range-based:</p>
+          <div class="formula">W = F &times; D &times; R &times; I</div>
+          <ul>
+            <li><strong>F</strong>: expected daily footfall.</li>
+            <li><strong>D</strong>: event duration in days.</li>
+            <li><strong>R</strong>: CPCB baseline waste rate in kg/person/day.</li>
+            <li><strong>I</strong>: weighted activity intensity.</li>
+          </ul>
+          <p>Attendee-days are calculated once as <code>F &times; D</code>, and low, central, and high intensity values produce the uncertainty range.</p>
+          <pre>attendee_days = inputs.total_footfall * inputs.duration_days
+
+waste = Range(
+    attendee_days * baseline_rate * intensity.low,
+    attendee_days * baseline_rate * intensity.central,
+    attendee_days * baseline_rate * intensity.high,
+)</pre>
+
+          <h3>Activity and location weighting</h3>
+          <p>Activity weights describe relative contribution, not attendance estimates:</p>
+          <pre>ACTIVITY_WEIGHTS = {
+    "Food Stalls": 5,
+    "Music Concert": 4,
+    "Performing Arts": 3,
+    "Literary & Fine Arts": 2,
+    "Sports": 1,
+    "Hackathon": 1,
+}</pre>
+          <p>Location waste is allocated using each location's sum of activity weights. Area remains spatial metadata and is not used as a direct waste multiplier.</p>
+          <pre>share = location_activity_weight / total_activity_weight
+location_waste = total_waste * share</pre>
+
+          <h3>Mass to bin demand</h3>
+          <p>Category masses are converted into estimated volume using material densities:</p>
+          <div class="formula">V = &Sigma; (M<sub>i</sub> / &rho;<sub>i</sub>)</div>
+          <p>Bunbetsu uses 100-litre bins with an 80% usable fill fraction, giving 80 litres per filling turn:</p>
+          <div class="formula">C<sub>usable</sub> = 100 &times; 0.80 = 80 litres</div>
+          <p>Daily bin demand is then:</p>
+          <div class="formula">N = &lceil; V<sub>daily</sub> / 80 &rceil;</div>
+          <p>Food and Others form the Disposable stream. Plastic, Paper, and Glass form the Recyclable stream.</p>
+
+          <h3>Perimeter-constrained placement</h3>
+          <p>Physical placement is constrained by the configured 25-metre spacing policy:</p>
+          <div class="formula">M = &lfloor; P / d &rfloor;</div>
+          <p>Here, <code>P</code> is the approximate location perimeter and <code>d</code> is the spacing policy. When capacity demand exceeds physical perimeter capacity, bins are allocated between streams with a deterministic largest-remainder method, and extra emptying turns are calculated.</p>
+          <p>Coordinates are sampled along an inward-offset exterior boundary and validated so the returned points remain inside the event polygon.</p>
+
+          <h3>Pedestrian graph and route scoring</h3>
+          <p>The routing pipeline retrieves eligible OSM ways, projects them into local metres, clips them to the campus boundary, and constructs a NetworkX graph. Activity locations are connected by snapping to nearby mapped edges. Connectors are marked separately from mapped paths and can be flagged if they cross buildings or barriers.</p>
+          <p>For each connected pair, the scorer considers the shortest path and bounded alternative loopless paths. This is Yen-style k-shortest-path behavior implemented with NetworkX's weighted simple-path generator, with limits on path count and additional distance.</p>
+          <div class="formula">P<sub>k</sub> = e<sup>-&Delta;<sub>k</sub> / &lambda;</sup> / &Sigma;<sub>j</sub> e<sup>-&Delta;<sub>j</sub> / &lambda;</sup></div>
+          <p>Pair attraction uses a symmetric geometric mean:</p>
+          <div class="formula">A<sub>ab</sub> = &radic;(w<sub>a</sub> &times; w<sub>b</sub>)</div>
+          <p>Path contributions accumulate on mapped road segments and are normalized to <code>[0, 1]</code>. These are modeled relative importance scores, not sensor-measured footfall.</p>
+
+          <h3>Campus result ranking</h3>
+          <p>Nominatim can return a university, a department building, a nearby road, or another similarly named place. Bunbetsu ranks candidates using educational OSM classes, university/college/campus types, campus-related keywords, and polygon availability. State information is taken from structured address fields such as <code>state</code>, <code>province</code>, and <code>region</code>.</p>
+        </section>
+
+        <section id="challenges">
+          <div class="eyebrow">What made it difficult</div>
+          <h2>Challenges and solutions</h2>
+          <div class="challenge-grid">
+            <div class="challenge"><h3>1. No event-waste dataset</h3><p>A reliable supervised model would need historical footfall, event type, duration, location, waste category, and collection data. That dataset was not available at the start.</p><h4>Solution</h4><p>We researched credible references and built a transparent baseline using CPCB state and UT rates, activity weights, composition priors, intensity bands, and low/central/high ranges. The model records assumptions and can later be calibrated with real events.</p></div>
+            <div class="challenge"><h3>2. Bin counts had to become map actions</h3><p>A number alone does not tell an organizer where to put infrastructure. The model also needed to handle waste streams, polygon sizes, perimeter limits, and emptying frequency.</p><h4>Solution</h4><p>We convert mass into volume, calculate capacity demand, apply a 25-metre spacing policy, sample inward-offset polygon boundaries, preserve exact coordinates, and report shortfalls instead of inventing unrealistic placements.</p></div>
+            <div class="challenge"><h3>3. The entry gate changes movement</h3><p>Pedestrian movement needs an origin as well as event destinations. The entry gate is also a likely collection and waste concentration point.</p><h4>Solution</h4><p>The UI requires the organizer to place a gate inside the campus. It is validated geographically and included as a Point location in the route graph.</p></div>
+            <div class="challenge"><h3>4. One shortest path is not enough</h3><p>Visitors may use several routes because of crowding, barriers, accessibility, or convenience. Scoring only one route could miss important corridors.</p><h4>Solution</h4><p>We evaluate bounded alternative paths, apply exponential distance decay, and build a popularity index for mapped road segments. Popular corridors become stronger roadside-bin candidates.</p></div>
+            <div class="challenge"><h3>5. Campus roads were not already available</h3><p>Every college has a different boundary and pedestrian layout, and there was no single project-specific map dataset.</p><h4>Solution</h4><p>Nominatim supplies campus search and geometry. Overpass supplies local walkable ways, buildings, and barriers. Local processing builds a campus-specific graph, with caching and bounded retries.</p></div>
+            <div class="challenge"><h3>6. OpenStreetMap returned multiple matches</h3><p>A name can match the university, a building, a road, or a nearby place. Choosing the first response would be unreliable.</p><h4>Solution</h4><p>We rank results using OSM tags, education-related classes, campus keywords, and polygon geometry. Structured address fields provide a safer state lookup than parsing display text alone.</p></div>
+            <div class="challenge"><h3>7. Geometry could break physical decisions</h3><p>Invalid polygons, narrow zones, disconnected components, and rounding near boundaries can create unsafe or impossible bin coordinates.</p><h4>Solution</h4><p>GeoJSON is validated at the API boundary. Shapely and browser utilities check ring closure, positive area, containment, intersections, inward buffers, and final returned coordinates.</p></div>
+            <div class="challenge"><h3>8. External services can fail</h3><p>Nominatim and Overpass can time out, rate-limit requests, return no paths, or temporarily become unavailable.</p><h4>Solution</h4><p>The system uses timeouts, bounded retries, temporary caching, explicit errors, non-blocking route warnings, and partial pipeline responses.</p></div>
+          </div>
+        </section>
+
+        <section id="testing">
+          <div class="eyebrow">Evidence and operation</div>
+          <h2>Testing, deployment, and results</h2>
+          <h3>Testing</h3>
+          <p>Backend tests cover API validation, campus search, waste calculations, unified planning, stable IDs, polygon and MultiPolygon placement, Point handling, OSM filtering, graph construction, connectors, and route scoring.</p>
+          <p>Frontend tests cover the unified request contract, response mapping, duplicate-name and missing-state validation, heatmaps, polygon drawing and erasing, road-bin integration, location-aware recommendations, entry-gate behavior, campus isolation, dashboard navigation, and empty states.</p>
+          <pre>python -m pytest -c backend/pytest.ini backend
+npm --prefix frontend run lint
+npm --prefix frontend run build
+npm --prefix frontend test</pre>
+          <h3>Deployment</h3>
+          <p>For local development, install Python dependencies from <code>backend/requirements.txt</code>, start FastAPI on port <code>8000</code>, then run the Vite frontend on port <code>3000</code>. Vite proxies <code>/api</code> requests to the backend.</p>
+          <pre>pip install -r backend/requirements.txt
+uvicorn server:app --app-dir backend --reload --port 8000
+
+cd frontend
+npm install
+npm run dev</pre>
+          <p>Production deployment should add HTTPS, specific CORS origins, persistent caching, rate limiting, monitoring, real authentication, database-backed event plans, and background jobs for large routing requests.</p>
+          <h3>Results</h3>
+          <div class="results">
+            <div class="result-card"><strong>Waste picture</strong><span>Total range, category composition, recyclable/disposable split, and location allocations.</span></div>
+            <div class="result-card"><strong>Physical plan</strong><span>On-site bins, roadside bins, stream counts, coordinates, emptying turns, and capacity warnings.</span></div>
+            <div class="result-card"><strong>Movement picture</strong><span>Pedestrian corridors, route popularity, connected pairs, unreachable pairs, and priority junctions.</span></div>
+          </div>
+          <p>The key result is spatial: Bunbetsu does not stop at a waste number. It connects prediction to the campus map and gives organizers a practical layout to review. The results remain planning estimates and should be checked against accessibility, emergency routes, collection access, doors, utilities, barriers, and local operational rules.</p>
+        </section>
+
+        <section id="future">
+          <div class="eyebrow">What comes next</div>
+          <h2>Key learnings and future scope</h2>
+          <h3>Key learnings</h3>
+          <div class="intro-grid">
+            <div class="stat"><strong>Start before perfect data</strong><span>Research-backed assumptions and a transparent baseline can create useful value while real data is still being collected.</span></div>
+            <div class="stat"><strong>Prediction needs action</strong><span>A waste estimate becomes more useful when connected to bins, locations, routes, emptying, and warnings.</span></div>
+            <div class="stat"><strong>Show uncertainty</strong><span>Low, central, and high values are more honest and operationally useful than one falsely precise number.</span></div>
+            <div class="stat"><strong>Design for failure</strong><span>Partial results and diagnostics are essential when map data or public services are incomplete.</span></div>
+          </div>
+          <h3>Future scope</h3>
+          <div class="scope-grid">
+            <div class="scope-card"><h3>Existing campus bins</h3><p>Import permanent bin coordinates, capacities, streams, conditions, and collection schedules so the system recommends only extra festival bins.</p></div>
+            <div class="scope-card"><h3>Learn from every event</h3><p>Capture actual collected waste, fill times, overflow incidents, contamination, and footfall to calibrate campus-specific models.</p></div>
+            <div class="scope-card"><h3>Real-time fill monitoring</h3><p>Use sensors to alert staff about nearly full bins, high-demand corridors, and contamination.</p></div>
+            <div class="scope-card"><h3>Collection routing</h3><p>Turn the same pedestrian graph into an operational route for collection teams, prioritizing full bins and short travel.</p></div>
+            <div class="scope-card"><h3>Richer inputs</h3><p>Add hourly footfall, schedules, ticket scans, crowd density, venue capacity, and peak-hour forecasts.</p></div>
+            <div class="scope-card"><h3>Safety and accessibility</h3><p>Include emergency lanes, accessible paths, slopes, stairs, entrances, service roads, and temporary barriers.</p></div>
+            <div class="scope-card"><h3>More waste streams</h3><p>Support compostables, e-waste, sanitary waste, glass-specific collection, cooking oil, and reusable-cup systems.</p></div>
+            <div class="scope-card"><h3>Institutional planning</h3><p>Manage multiple campuses, reuse event templates, compare festivals, and maintain long-term campus profiles.</p></div>
+            <div class="scope-card"><h3>Exports and reporting</h3><p>Generate PDFs, CSV schedules, printable maps, staff assignments, diversion rates, and estimated emissions savings.</p></div>
+            <div class="scope-card"><h3>Explainable learning</h3><p>Keep the deterministic model as a baseline while adding campus-specific corrections with confidence intervals.</p></div>
+            <div class="scope-card"><h3>Weather awareness</h3><p>Account for rain, temperature, outdoor activity, seasonal food demand, and temporary route closures.</p></div>
+            <div class="scope-card"><h3>Sustainability metrics</h3><p>Measure landfill diversion, recycling, compost recovery, collection distance, avoided emissions, and overflow reduction.</p></div>
+          </div>
+        </section>
+
+        <section id="links">
+          <div class="eyebrow">Try the work</div>
+          <h2>GitHub, live demo, and conclusion</h2>
+          <div class="links">
+            <div class="link-placeholder"><strong>GitHub repository</strong><span>Add link here</span></div>
+            <div class="link-placeholder"><strong>Live demo</strong><span>Add link here</span></div>
+          </div>
+          <div class="closing" style="margin-top: 1.5rem;">
+            <h2>Planning cleaner events starts before the event begins.</h2>
+            <p>Bunbetsu turns festival waste planning from a reactive task into a pre-event workflow. It combines an explainable waste model, a geographic interface, polygon-aware bin placement, OpenStreetMap pedestrian data, route popularity scoring, and roadside-bin recommendations.</p>
+            <p>The project began with a practical constraint: there was no perfect festival dataset. Instead of stopping, we built a transparent baseline with CPCB references, documented assumptions, and uncertainty ranges. As real event data arrives, the same architecture can grow into a sensor-driven, campus-specific sustainability system.</p>
+          </div>
+          <p style="margin-top: 1.4rem; color: var(--muted); font-size: .88rem;">Project documentation: <a href="README.md">README.md</a> · Frontend: <a href="frontend/README.md">frontend/README.md</a> · Backend entry point: <a href="backend/server.py">backend/server.py</a></p>
+        </section>
+      </article>
+    </main>
+  </div>
+
+  <footer>
+    Bunbetsu · AWS Build Bharat Hackathon · Waste & Energy
+  </footer>
+</body>
+</html>

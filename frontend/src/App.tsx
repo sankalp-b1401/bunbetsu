@@ -24,10 +24,11 @@ import {
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
 import { DashboardPage } from './components/Dashboard/DashboardPage';
+import { LandingPage } from './components/Landing/LandingPage';
 
 export default function App() {
-  // Top-level navigation: 'auth' | 'dashboard' | 'planner'
-  const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'planner'>('auth');
+  // Top-level navigation: 'landing' | 'auth' | 'dashboard' | 'planner'
+  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'dashboard' | 'planner'>('landing');
   const [user, setUser] = useState<AuthUser | null>(null);
 
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
@@ -424,6 +425,14 @@ export default function App() {
     setIsPlanStale(false);
     setStep1Completed(false);
   };
+
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onContinueAsGuest={handleContinueAsGuest}
+      />
+    );
+  }
 
   if (currentView === 'auth' || !user) {
     return (
