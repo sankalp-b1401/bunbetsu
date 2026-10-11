@@ -24,9 +24,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 }) => {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("you@university.edu");
-  const [password, setPassword] = useState("••••••••••••");
-  const [fullName, setFullName] = useState("Alex S.");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -38,15 +39,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     e.preventDefault();
     setIsLoading(true);
 
+    const combinedName = `${firstName.trim()} ${lastName.trim()}`.trim();
+
     // Simulate snappy authentication flow
     setTimeout(() => {
       setIsLoading(false);
       onLoginSuccess({
         name:
-          authMode === "signup" && fullName.trim()
-            ? fullName.trim()
-            : "Alex S.",
-        email: email.trim() || "you@university.edu",
+          authMode === "signup" && combinedName
+            ? combinedName
+            : "Aarav Sharma",
+        email: email.trim() || "aarav.sharma@university.edu",
         role: "Sustainability Lead",
       });
     }, 450);
@@ -58,8 +61,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setTimeout(() => {
       setIsLoading(false);
       onLoginSuccess({
-        name: "Alex S.",
-        email: "alex.s@university.edu",
+        name: "Aarav Sharma",
+        email: "aarav.sharma@university.edu",
         role: "Sustainability Lead",
       });
     }, 400);
@@ -177,20 +180,35 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
           {/* Email & Password Form */}
           <form onSubmit={handleSubmit} className="space-y-2.5">
-            {/* Optional Name field in Signup mode */}
+            {/* First Name & Last Name in the same line for Signup mode */}
             {authMode === "signup" && (
-              <div>
-                <label className="block text-xs font-semibold text-[#183E28] mb-1">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Alex S."
-                  className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-[#183E28] mb-1">
+                    First name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#183E28] mb-1">
+                    Last name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                    className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  />
+                </div>
               </div>
             )}
 
@@ -248,7 +266,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setResetEmail(email !== "you@university.edu" ? email : "");
+                    setResetEmail(email.trim());
                     setShowForgotModal(true);
                   }}
                   className="text-[11px] font-bold text-[#0D4421] hover:underline cursor-pointer transition"

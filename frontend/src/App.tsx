@@ -19,13 +19,16 @@ import {
   BinRecommendationResult,
   RoadBinRecommendationResult,
   EntryGate,
+  AuthUser,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
+import { DashboardPage } from './components/Dashboard/DashboardPage';
 
 export default function App() {
-  // Auth state: lands on AuthPage by default
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  // Top-level navigation: 'auth' | 'dashboard' | 'planner'
+  const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'planner'>('auth');
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -357,11 +360,76 @@ export default function App() {
     setCurrentStep(step);
   };
 
-  if (!isAuthenticated) {
+  const handleLoginSuccess = (userData: { name: string; email: string; role?: string }) => {
+    const authedUser: AuthUser = { ...userData, isGuest: false };
+    setUser(authedUser);
+    setCurrentView('dashboard');
+  };
+
+  const handleContinueAsGuest = () => {
+    const guestUser: AuthUser = {
+      name: 'Guest User',
+      email: 'guest@bunbetsu.app',
+      role: 'Guest Planner',
+      isGuest: true,
+    };
+    setUser(guestUser);
+    setCurrentStep(1);
+    setCurrentView('planner');
+  };
+
+  const handleStartPlanning = () => {
+    setCurrentStep(1);
+    setSelectedCampus(null);
+    setLocations([]);
+    setEntryGate(null);
+    setSelectedLocationId(null);
+    setPredictionResult(null);
+    setBinRecommendations(null);
+    setRoadBinRecommendations(null);
+    setRouteResult(null);
+    setPlanningError(null);
+    setRoutesError(null);
+    setIsPlanStale(false);
+    setStep1Completed(false);
+    setCurrentView('planner');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentView('auth');
+    setCurrentStep(1);
+    setSelectedCampus(null);
+    setLocations([]);
+    setEntryGate(null);
+    setSelectedLocationId(null);
+    setPredictionResult(null);
+    setBinRecommendations(null);
+    setRoadBinRecommendations(null);
+    setRouteResult(null);
+    setPlanningError(null);
+    setRoutesError(null);
+    setIsPlanStale(false);
+    setStep1Completed(false);
+  };
+
+  if (currentView === 'auth' || !user) {
     return (
       <AuthPage
-        onLoginSuccess={() => setIsAuthenticated(true)}
-        onContinueAsGuest={() => setIsAuthenticated(true)}
+        onLoginSuccess={handleLoginSuccess}
+        onContinueAsGuest={handleContinueAsGuest}
+      />
+    );
+  }
+
+  if (currentView === 'dashboard') {
+    return (
+      <DashboardPage
+        user={user}
+        onStartPlanning={handleStartPlanning}
+        onLogout={handleLogout}
+        recentEvents={[]}
+        savedTemplates={[]}
       />
     );
   }
@@ -374,7 +442,9 @@ export default function App() {
         onStepClick={handleStepClick}
         step1Completed={step1Completed}
         canGoToPlan={canGoToPlan}
-        onLogout={() => setIsAuthenticated(false)}
+        user={user}
+        onLogout={handleLogout}
+        onGoToDashboard={() => setCurrentView('dashboard')}
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);

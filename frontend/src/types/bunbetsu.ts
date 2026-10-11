@@ -660,3 +660,33 @@ export interface PlanDashboardProps {
   onCalculateRoutes?: () => void;
 }
 
+export interface AuthUser {
+  name: string;
+  email: string;
+  role?: string;
+  isGuest?: boolean;
+}
+
+export interface DashboardEventItem {
+  id: string;
+  name: string;
+}
+
+export interface DashboardTemplateItem {
+  id: string;
+  name: string;
+}
+
+export function getUserInitials(name: string): string {
+  if (!name || !name.trim()) return 'U';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function getUserFirstName(name: string): string {
+  if (!name || !name.trim()) return 'User';
+  const parts = name.trim().split(/\s+/);
+  return parts[0];
+}
+

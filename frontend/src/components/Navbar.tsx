@@ -1,47 +1,78 @@
-import React, { useState } from 'react';
-import { Check, History, X, ArrowRight, LayoutTemplate } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Check } from 'lucide-react';
+import { AuthUser, getUserInitials } from '../types/bunbetsu';
 
 interface NavbarProps {
-  currentStep: 1 | 2 | 3;
-  onStepClick: (step: 1 | 2 | 3) => void;
-  step1Completed: boolean;
+  currentStep?: 1 | 2 | 3;
+  onStepClick?: (step: 1 | 2 | 3) => void;
+  step1Completed?: boolean;
   canGoToPlan?: boolean;
   onResetPlan?: () => void;
   onLogout?: () => void;
+  onGoToDashboard?: () => void;
+  user?: AuthUser | null;
+  isDashboard?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentStep,
+  currentStep = 1,
   onStepClick,
-  step1Completed,
+  step1Completed = false,
   canGoToPlan = false,
   onResetPlan,
   onLogout,
+  onGoToDashboard,
+  user,
+  isDashboard = false,
 }) => {
-  const [showEventHistory, setShowEventHistory] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click or escape key
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const initials = user ? getUserInitials(user.name) : 'AS';
 
   return (
-    <>
-      <header className="w-full bg-white/95 backdrop-blur-md border-b border-[#E1E8DE] shrink-0 z-30 select-none shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-        <div className="w-full px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-4">
-          {/* Brand / Logo: sleek, clear, well-proportioned without bloating navbar height */}
-          <div className="flex items-center shrink-0">
-            <img
-              src="/bunbetsu-logo.png"
-              alt="BUNBETSU"
-              className="h-8 sm:h-9 md:h-9.5 w-auto max-w-[200px] sm:max-w-[240px] object-contain cursor-pointer select-none transition-opacity hover:opacity-90 active:opacity-75"
-              onClick={() => onStepClick(1)}
-              title="Bunbetsu - Campus Venue Waste Planner"
-            />
-          </div>
+    <header className="w-full bg-white/95 backdrop-blur-md border-b border-[#E1E8DE] shrink-0 z-30 select-none shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      <div className="w-full px-4 sm:px-6 h-13 sm:h-14 flex items-center justify-between gap-4">
+        {/* Brand / Logo */}
+        <div className="flex items-center shrink-0">
+          <img
+            src="/bunbetsu-logo.png"
+            alt="BUNBETSU"
+            className="h-8 sm:h-9 md:h-9.5 w-auto max-w-[200px] sm:max-w-[240px] object-contain cursor-pointer select-none transition-opacity hover:opacity-90 active:opacity-75"
+            onClick={() => (onGoToDashboard ? onGoToDashboard() : onStepClick?.(1))}
+            title="Bunbetsu - Campus Venue Waste Planner"
+          />
+        </div>
 
-          {/* Stepper with Architecturally Refined Slim Segmented Controls */}
+        {/* Stepper with Architecturally Refined Slim Segmented Controls (Campus selection page chain only) */}
+        {!isDashboard && (
           <nav className="flex items-center gap-1 bg-[#F4F6F2] p-0.5 rounded-lg border border-[#E1E8DE]">
             {/* Step 1: Campus */}
             <button
               type="button"
-              onClick={() => onStepClick(1)}
+              onClick={() => onStepClick?.(1)}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs cursor-pointer transition-all font-sans ${
                 currentStep === 1
                   ? 'bg-white text-[#004B20] shadow-xs border border-[#E1E8DE]/90 font-bold'
@@ -71,7 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Step 2: Configure */}
             <button
               type="button"
-              onClick={() => step1Completed && onStepClick(2)}
+              onClick={() => step1Completed && onStepClick?.(2)}
               disabled={!step1Completed}
               title={!step1Completed ? 'Confirm Campus on Step 1 first' : ''}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
@@ -103,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* Step 3: Plan */}
             <button
               type="button"
-              onClick={() => canGoToPlan && onStepClick(3)}
+              onClick={() => canGoToPlan && onStepClick?.(3)}
               disabled={!canGoToPlan}
               title={!canGoToPlan ? 'Configure event details and locations first' : ''}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition-all font-sans ${
@@ -126,249 +157,59 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Plan</span>
             </button>
           </nav>
+        )}
 
-          {/* Right Navigation */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-            {/* Event History Button */}
+        {/* Right Navigation */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+
+          {/* Authenticated User Profile Corner */}
+          <div className="relative shrink-0" ref={dropdownRef}>
             <button
               type="button"
-              onClick={() => setShowEventHistory(true)}
-              className="text-xs font-semibold text-[#667267] hover:text-[#202820] transition-colors hidden sm:flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-md hover:bg-[#F4F6F2]"
+              onClick={() => setShowDropdown((prev) => !prev)}
+              className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-[#F4F6F2] transition cursor-pointer select-none"
+              aria-expanded={showDropdown}
+              title={user?.name || 'Aarav Sharma'}
             >
-              <History className="w-3.5 h-3.5 text-[#667267]" />
-              <span>Event History</span>
+              {/* User Initials Avatar Circle */}
+              <div className="w-8 h-8 rounded-full bg-[#0B4222] text-white flex items-center justify-center text-xs font-bold tracking-tight shadow-2xs select-none">
+                {initials}
+              </div>
+              <span className="text-xs text-[#526857] select-none pr-0.5">
+                {showDropdown ? '▴' : '▾'}
+              </span>
             </button>
 
-            {/* Templates Button with Icon */}
-            <button
-              type="button"
-              onClick={() => setShowTemplates(true)}
-              className="text-xs font-semibold text-[#667267] hover:text-[#202820] transition-colors hidden md:flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-md hover:bg-[#F4F6F2]"
-            >
-              <LayoutTemplate className="w-3.5 h-3.5 text-[#667267]" />
-              <span>Templates</span>
-            </button>
-
-            <div className="h-3.5 w-px bg-[#E1E8DE] hidden sm:block mx-0.5" />
-
-            {/* User Profile Avatar Tile */}
-            <button
-              type="button"
-              onClick={onLogout}
-              className="w-7.5 h-7.5 rounded-md bg-[#004B20] text-white flex items-center justify-center text-xs font-bold tracking-tight shadow-2xs hover:bg-[#003B19] transition-all cursor-pointer select-none border border-[#004B20]"
-              title={onLogout ? "Sign out / Return to login" : "Alex S. (Sustainability Coordinator)"}
-            >
-              AS
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* EVENT HISTORY MODAL */}
-      {showEventHistory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg shadow-2xl border border-[#E1E8DE] w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="px-5 py-4 bg-[#F7F9F5] border-b border-[#E1E8DE] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-md bg-[#004B20] text-white flex items-center justify-center">
-                  <History className="w-4 h-4 text-[#70D000]" />
+            {/* User Account Dropdown Menu: Shows user name and logout button */}
+            {showDropdown && (
+              <div className="absolute right-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-[#E1E8DE] py-2 z-50 animate-in fade-in duration-100">
+                <div className="px-4 py-2 border-b border-[#F0F4EE]">
+                  <div className="text-xs font-bold text-[#183E28] truncate">
+                    {user?.name || 'Aarav Sharma'}
+                  </div>
+                  {user?.email && (
+                    <div className="text-[11px] text-[#667267] truncate mt-0.5">{user.email}</div>
+                  )}
                 </div>
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-[#202820]">Campus Event History</h3>
-                  <p className="text-[11px] text-[#667267] font-medium">
-                    Archived fest waste resource plans and diversion reports
-                  </p>
+
+                <div className="p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      onLogout?.();
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50 rounded-lg transition cursor-pointer flex items-center justify-between"
+                  >
+                    <span>Log out</span>
+                    <span className="text-[11px] text-red-400">→</span>
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowEventHistory(false)}
-                className="p-1.5 text-[#667267] hover:text-[#202820] hover:bg-white rounded-md cursor-pointer transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-3">
-              {[
-                {
-                  id: 'evt-2024-avishkar',
-                  name: 'Avishkar Techfest 2024',
-                  campus: 'MNNIT Allahabad',
-                  date: 'Nov 2024',
-                  duration: '3 days',
-                  footfall: '14,500',
-                  wasteTotal: '3.9 tonnes',
-                  divertedRate: '72% diverted',
-                  color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-                },
-                {
-                  id: 'evt-2024-culrav',
-                  name: 'Culrav Cultural Fest 2024',
-                  campus: 'MNNIT Allahabad',
-                  date: 'Apr 2024',
-                  duration: '4 days',
-                  footfall: '22,000',
-                  wasteTotal: '6.2 tonnes',
-                  divertedRate: '68% diverted',
-                  color: 'text-blue-700 bg-blue-50 border-blue-200',
-                },
-                {
-                  id: 'evt-2023-gnosio',
-                  name: 'Gnosiomania Quiz Festival 2023',
-                  campus: 'MNNIT Allahabad',
-                  date: 'Oct 2023',
-                  duration: '2 days',
-                  footfall: '4,800',
-                  wasteTotal: '0.9 tonnes',
-                  divertedRate: '81% diverted',
-                  color: 'text-purple-700 bg-purple-50 border-purple-200',
-                },
-              ].map((evt) => (
-                <div
-                  key={evt.id}
-                  className="p-3.5 bg-white rounded-md border border-[#E1E8DE] hover:border-[#004B20]/40 hover:shadow-xs transition flex items-center justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-heading text-xs font-bold text-[#202820]">{evt.name}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${evt.color}`}>
-                        {evt.divertedRate}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-[#667267] flex items-center gap-3">
-                      <span>{evt.campus}</span>
-                      <span>•</span>
-                      <span>{evt.date} ({evt.duration})</span>
-                      <span>•</span>
-                      <span>{evt.footfall} attendees</span>
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-heading text-xs font-bold text-[#004B20]">{evt.wasteTotal}</div>
-                    <button
-                      type="button"
-                      className="text-[10px] font-semibold text-[#004B20] hover:underline flex items-center gap-1 justify-end mt-0.5 cursor-pointer"
-                      onClick={() => alert(`Loaded historical metrics for ${evt.name}`)}
-                    >
-                      <span>View audit</span>
-                      <ArrowRight className="w-2.5 h-2.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="px-5 py-3 bg-[#F7F9F5] border-t border-[#E1E8DE] flex items-center justify-between text-xs">
-              <span className="text-[11px] text-[#667267]">
-                3 historical event plans stored on this device
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowEventHistory(false)}
-                className="px-3.5 py-1.5 bg-[#004B20] text-white rounded-md font-bold text-xs hover:bg-[#003B19] transition cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
+            )}
           </div>
         </div>
-      )}
-
-
-
-      {/* TEMPLATES MODAL */}
-      {showTemplates && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg shadow-2xl border border-[#E1E8DE] w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="px-5 py-4 bg-[#F7F9F5] border-b border-[#E1E8DE] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-md bg-[#004B20] text-white flex items-center justify-center">
-                  <LayoutTemplate className="w-4 h-4 text-[#70D000]" />
-                </div>
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-[#202820]">Event Archetype Templates</h3>
-                  <p className="text-[11px] text-[#667267] font-medium">
-                    Pre-calibrated campus event models for quick waste resource planning
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTemplates(false)}
-                className="p-1.5 text-[#667267] hover:text-[#202820] hover:bg-white rounded-md cursor-pointer transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-3">
-              {[
-                {
-                  id: 'tmpl-techfest',
-                  name: '3-Day Technical Festival',
-                  desc: 'High electronics, robotics packaging, and late-night food court volumes.',
-                  benchRate: 'CPCB state baseline',
-                  recommendedBins: '3-stream paired bins with dedicated e-waste drops',
-                },
-                {
-                  id: 'tmpl-cultfest',
-                  name: '4-Day Mega Cultural Fest',
-                  desc: 'Peak footfall, major open-air food stalls, stage props, and paper decorations.',
-                  benchRate: '0.52 kg/attendee-day',
-                  recommendedBins: 'High-capacity 240L compost stations with 2hr haul cycles',
-                },
-                {
-                  id: 'tmpl-hackathon',
-                  name: '48-Hour Zero-Waste Hackathon',
-                  desc: 'Continuous indoor footfall, high coffee cup, snack wrapper, and PET bottle generation.',
-                  benchRate: '0.38 kg/attendee-day',
-                  recommendedBins: 'Clean paper & plastics baling hubs near coding labs',
-                },
-              ].map((tmpl) => (
-                <div
-                  key={tmpl.id}
-                  className="p-3.5 bg-white rounded-md border border-[#E1E8DE] hover:border-[#004B20]/40 hover:shadow-xs transition space-y-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading text-xs font-bold text-[#202820]">{tmpl.name}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EAF5E6] text-[#004B20] border border-[#70D000]/30">
-                      {tmpl.benchRate}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#667267] leading-relaxed">{tmpl.desc}</p>
-                  <div className="text-[10px] text-[#202820] font-medium pt-1 border-t border-[#E1E8DE]/60 flex items-center justify-between">
-                    <span>{tmpl.recommendedBins}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowTemplates(false);
-                        alert(`Applied "${tmpl.name}" baseline archetype to event settings`);
-                      }}
-                      className="text-[10px] font-bold text-[#004B20] hover:underline cursor-pointer"
-                    >
-                      Use template →
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="px-5 py-3 bg-[#F7F9F5] border-t border-[#E1E8DE] flex items-center justify-between text-xs">
-              <span className="text-[11px] text-[#667267]">
-                Templates calibrated using Central Pollution Control Board guidelines
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowTemplates(false)}
-                className="px-3.5 py-1.5 bg-[#004B20] text-white rounded-md font-bold text-xs hover:bg-[#003B19] transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      </div>
+    </header>
   );
 };
