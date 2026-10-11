@@ -7,6 +7,7 @@ interface NavbarProps {
   step1Completed: boolean;
   canGoToPlan?: boolean;
   onResetPlan?: () => void;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,6 +16,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   step1Completed,
   canGoToPlan = false,
   onResetPlan,
+  onLogout,
 }) => {
   const [showEventHistory, setShowEventHistory] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -152,8 +154,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* User Profile Avatar Tile */}
             <button
               type="button"
+              onClick={onLogout}
               className="w-7.5 h-7.5 rounded-md bg-[#004B20] text-white flex items-center justify-center text-xs font-bold tracking-tight shadow-2xs hover:bg-[#003B19] transition-all cursor-pointer select-none border border-[#004B20]"
-              title="Alex S. (Sustainability Coordinator)"
+              title={onLogout ? "Sign out / Return to login" : "Alex S. (Sustainability Coordinator)"}
             >
               AS
             </button>

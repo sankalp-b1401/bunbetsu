@@ -21,8 +21,12 @@ import {
   EntryGate,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
+import { AuthPage } from './components/Auth/AuthPage';
 
 export default function App() {
+  // Auth state: lands on AuthPage by default
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [step1Completed, setStep1Completed] = useState<boolean>(false);
@@ -353,6 +357,15 @@ export default function App() {
     setCurrentStep(step);
   };
 
+  if (!isAuthenticated) {
+    return (
+      <AuthPage
+        onLoginSuccess={() => setIsAuthenticated(true)}
+        onContinueAsGuest={() => setIsAuthenticated(true)}
+      />
+    );
+  }
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans">
       {/* Top Persistent Navbar with Step Indicator */}
@@ -361,6 +374,7 @@ export default function App() {
         onStepClick={handleStepClick}
         step1Completed={step1Completed}
         canGoToPlan={canGoToPlan}
+        onLogout={() => setIsAuthenticated(false)}
         onResetPlan={() => {
           setLocations([]);
           setSelectedLocationId(null);
