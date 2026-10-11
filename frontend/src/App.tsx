@@ -23,6 +23,8 @@ import {
   AuthUser,
   DashboardTemplateItem,
   SavedTemplateData,
+  DashboardEventItem,
+  EventHistorySnapshot,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
@@ -38,7 +40,13 @@ import {
   deleteSavedTemplate,
   validateTemplateData,
 } from './services/templateApi';
+import {
+  saveEventHistory,
+  listEventHistory,
+  validateEventSnapshot,
+} from './services/historyApi';
 import { SaveTemplateModal } from './components/Step2EventConfiguration/SaveTemplateModal';
+import { SavePlanModal } from './components/Step3Plan/SavePlanModal';
 
 export default function App() {
   // Top-level navigation: 'auth' | 'dashboard' | 'planner'
@@ -52,6 +60,16 @@ export default function App() {
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Event history state
+  const [recentEvents, setRecentEvents] = useState<DashboardEventItem[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [showSaveHistoryModal, setShowSaveHistoryModal] = useState<boolean>(false);
+  const [isHistoricalView, setIsHistoricalView] = useState<boolean>(false);
+  const [historicalEventName, setHistoricalEventName] = useState<string | undefined>(undefined);
+  const [historicalCreatedAt, setHistoricalCreatedAt] = useState<string | undefined>(undefined);
+  const [hasSavedHistory, setHasSavedHistory] = useState<boolean>(false);
 
   // 3-Step navigation: 1 = Campus Finder, 2 = Event Configuration, 3 = Plan Dashboard
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -190,6 +208,10 @@ export default function App() {
     setRoutesError(null);
     setIsPlanStale(false);
     setStep1Completed(false);
+    setIsHistoricalView(false);
+    setHistoricalEventName(undefined);
+    setHistoricalCreatedAt(undefined);
+    setHasSavedHistory(false);
   };
 
   const handleSetEntryGate = (gate: EntryGate) => {
@@ -491,6 +513,10 @@ export default function App() {
     setRoutesError(null);
     setIsPlanStale(false);
     setStep1Completed(false);
+    setIsHistoricalView(false);
+    setHistoricalEventName(undefined);
+    setHistoricalCreatedAt(undefined);
+    setHasSavedHistory(false);
     setCurrentView('planner');
   };
 
@@ -508,6 +534,10 @@ export default function App() {
     setRoutesError(null);
     setIsPlanStale(false);
     setStep1Completed(false);
+    setIsHistoricalView(false);
+    setHistoricalEventName(undefined);
+    setHistoricalCreatedAt(undefined);
+    setHasSavedHistory(false);
     setCurrentView('planner');
   };
 
@@ -619,6 +649,10 @@ export default function App() {
     setStep1Completed(true);
     setCurrentStep(2);
     setCurrentView('planner');
+    setIsHistoricalView(false);
+    setHistoricalEventName(undefined);
+    setHistoricalCreatedAt(undefined);
+    setHasSavedHistory(false);
 
     setToastMessage(`Template "${templateItem.name}" restored.`);
     setTimeout(() => setToastMessage(null), 3500);
@@ -638,6 +672,150 @@ export default function App() {
     }
   };
 
+  // Re-fetch event history from Supabase
+  const refreshEvents = useCallback(async () => {
+    if (!user || user.isGuest || !isSupabaseConfigured) {
+      setRecentEvents([]);
+      return;
+    }
+    setIsLoadingEvents(true);
+    setEventsError(null);
+    try {
+      const records = await listEventHistory();
+      setRecentEvents(
+        records.map((r) => ({
+          id: r.id,
+          name: r.event_name,
+          campus_name: r.campus_name,
+          template_name: r.template_name,
+          created_at: r.created_at,
+          event_snapshot: r.event_snapshot,
+        }))
+      );
+    } catch (err: any) {
+      console.warn('[Bunbetsu] Failed to query event history:', err);
+      setEventsError(err?.message || 'Failed to retrieve event history.');
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  }, [user]);
+
+  // Load event history on user change or login
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      refreshEvents();
+    } else {
+      setRecentEvents([]);
+    }
+  }, [user, refreshEvents]);
+
+  // Handle saving current plan to event history
+  const handleSaveHistory = async (eventName: string, templateName?: string) => {
+    if (!selectedCampus) {
+      throw new Error('Please select a campus before saving event history.');
+    }
+
+    const snapshot: EventHistorySnapshot = {
+      schema_version: 1,
+      campus: selectedCampus,
+      allCampusLocations: allCampusLocations,
+      locations: locations,
+      eventDetails: eventDetails,
+      entryGate: entryGate,
+      prediction: predictionResult,
+      binRecommendations: binRecommendations,
+      roadBinRecommendations: roadBinRecommendations,
+      routeResult: routeResult,
+      diagnostics: null,
+      templateName: templateName || null,
+      savedAt: new Date().toISOString(),
+    };
+
+    await saveEventHistory({
+      eventName,
+      campusName: selectedCampus.name,
+      templateName,
+      snapshot,
+    });
+
+    setHasSavedHistory(true);
+    await refreshEvents();
+
+    setToastMessage(`Plan "${eventName}" saved to event history.`);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Handle opening an event plan from history in read-only mode
+  const handleSelectEvent = (eventItem: DashboardEventItem) => {
+    if (!eventItem.event_snapshot) {
+      setToastMessage(`Event "${eventItem.name}" has no plan snapshot data.`);
+      setTimeout(() => setToastMessage(null), 4000);
+      return;
+    }
+
+    const validation = validateEventSnapshot(eventItem.event_snapshot);
+    if (!validation.valid || !validation.data) {
+      setToastMessage(`Failed to open plan: ${validation.error || 'Invalid snapshot data.'}`);
+      setTimeout(() => setToastMessage(null), 5000);
+      return;
+    }
+
+    const data = validation.data;
+
+    // 1. Restore campus and complete location pool
+    setSelectedCampus(data.campus);
+    setAllCampusLocations(
+      data.allCampusLocations && data.allCampusLocations.length > 0
+        ? data.allCampusLocations
+        : data.campus.defaultLocations || data.locations
+    );
+
+    // 2. Restore active event locations
+    setLocations(data.locations || []);
+
+    // 3. Restore event details
+    setEventDetails({
+      festName: data.eventDetails.festName || eventItem.name,
+      durationDays: data.eventDetails.durationDays || 1,
+      expectedFootfall: data.eventDetails.expectedFootfall || 0,
+      startDate: data.eventDetails.startDate,
+      endDate: data.eventDetails.endDate,
+    });
+
+    // 4. Restore entry gate
+    setEntryGate(data.entryGate || null);
+
+    // 5. Restore frozen planning results (waste prediction, bin allocations, road bins, pedestrian routes)
+    // Live planning pipeline is deliberately bypassed; historical frozen results are used directly.
+    setSelectedLocationId(null);
+    setPredictionResult(data.prediction || null);
+    setBinRecommendations(data.binRecommendations || null);
+    setRoadBinRecommendations(data.roadBinRecommendations || null);
+    setRouteResult(data.routeResult || null);
+    setPlanningError(null);
+    setRoutesError(null);
+    setIsPlanStale(false);
+
+    // 6. Set historical read-only mode state
+    setIsHistoricalView(true);
+    setHistoricalEventName(eventItem.name);
+    setHistoricalCreatedAt(eventItem.created_at || data.savedAt);
+    setHasSavedHistory(true);
+
+    // 7. Navigate directly to Step 3: Plan Dashboard
+    setStep1Completed(true);
+    setCurrentStep(3);
+    setCurrentView('planner');
+
+    setToastMessage(`Loaded historical plan: "${eventItem.name}"`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleExitHistoricalView = () => {
+    setIsHistoricalView(false);
+    setCurrentView('dashboard');
+  };
+
   const handleLogout = async () => {
     try {
       if (!user?.isGuest && isSupabaseConfigured) {
@@ -648,6 +826,7 @@ export default function App() {
     } finally {
       setUser(null);
       setSavedTemplates([]);
+      setRecentEvents([]);
       setCurrentView('auth');
       setCurrentStep(1);
       setSelectedCampus(null);
@@ -662,6 +841,10 @@ export default function App() {
       setRoutesError(null);
       setIsPlanStale(false);
       setStep1Completed(false);
+      setIsHistoricalView(false);
+      setHistoricalEventName(undefined);
+      setHistoricalCreatedAt(undefined);
+      setHasSavedHistory(false);
     }
   };
 
@@ -698,12 +881,15 @@ export default function App() {
         user={user}
         onStartPlanning={handleStartPlanning}
         onLogout={handleLogout}
-        recentEvents={[]}
+        recentEvents={recentEvents}
         savedTemplates={savedTemplates}
+        onSelectEvent={handleSelectEvent}
         onSelectTemplate={handleSelectTemplate}
         onDeleteTemplate={handleDeleteTemplate}
         isLoadingTemplates={isLoadingTemplates}
         templatesError={templatesError}
+        isLoadingEvents={isLoadingEvents}
+        eventsError={eventsError}
       />
     );
   }
@@ -737,6 +923,10 @@ export default function App() {
           setPlanningError(null);
           setRoutesError(null);
           setIsPlanStale(false);
+          setIsHistoricalView(false);
+          setHistoricalEventName(undefined);
+          setHistoricalCreatedAt(undefined);
+          setHasSavedHistory(false);
         }}
       />
 
@@ -789,6 +979,13 @@ export default function App() {
             entryGate={entryGate}
             onBackToConfigure={() => setCurrentStep(2)}
             onRecalculatePrediction={executePlan}
+            isHistoricalView={isHistoricalView}
+            historicalCreatedAt={historicalCreatedAt}
+            historicalEventName={historicalEventName}
+            onExitHistoricalView={handleExitHistoricalView}
+            onSaveHistory={() => setShowSaveHistoryModal(true)}
+            hasSavedHistory={hasSavedHistory}
+            isGuest={Boolean(user?.isGuest)}
           />
         )}
       </main>
@@ -803,6 +1000,20 @@ export default function App() {
           locations={locations}
           eventDetails={eventDetails}
           entryGate={entryGate}
+          isGuest={Boolean(user?.isGuest)}
+        />
+      )}
+
+      {/* Save Event History Modal */}
+      {showSaveHistoryModal && selectedCampus && (
+        <SavePlanModal
+          isOpen={showSaveHistoryModal}
+          onClose={() => setShowSaveHistoryModal(false)}
+          onSave={handleSaveHistory}
+          campus={selectedCampus}
+          eventDetails={eventDetails}
+          locationsCount={locations.length}
+          prediction={predictionResult}
           isGuest={Boolean(user?.isGuest)}
         />
       )}

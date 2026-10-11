@@ -9,6 +9,10 @@ interface EventDetailsCardProps {
   locationsCount: number;
   prediction?: PredictionResult | null;
   onEditClick?: () => void;
+  isHistoricalView?: boolean;
+  onSaveHistory?: () => void;
+  isSavingHistory?: boolean;
+  hasSavedHistory?: boolean;
 }
 
 export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
@@ -17,6 +21,10 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
   locationsCount,
   prediction,
   onEditClick,
+  isHistoricalView = false,
+  onSaveHistory,
+  isSavingHistory = false,
+  hasSavedHistory = false,
 }) => {
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full">
@@ -33,17 +41,41 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
           </span>
         </div>
 
-        {onEditClick && (
-          <button
-            type="button"
-            onClick={onEditClick}
-            className="text-[10px] font-bold text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] px-2 py-0.5 rounded border border-[#70D000]/30 transition cursor-pointer flex items-center gap-0.5 shrink-0"
-            title="Return to Configure to modify event parameters"
-          >
-            <span>Edit</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!isHistoricalView && onSaveHistory && (
+            <button
+              type="button"
+              onClick={onSaveHistory}
+              disabled={isSavingHistory || hasSavedHistory}
+              className={`text-[10px] font-bold px-2 py-0.5 rounded border transition cursor-pointer flex items-center gap-1 shrink-0 ${
+                hasSavedHistory
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300 cursor-default'
+                  : 'text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] border-[#70D000]/30'
+              }`}
+              title="Save this completed plan to your event history"
+            >
+              <span>{hasSavedHistory ? 'Saved to history' : 'Save plan'}</span>
+            </button>
+          )}
+
+          {!isHistoricalView && onEditClick && (
+            <button
+              type="button"
+              onClick={onEditClick}
+              className="text-[10px] font-bold text-[#004B20] hover:text-[#003B19] bg-[#EAF5E6] hover:bg-[#D8ECCF] px-2 py-0.5 rounded border border-[#70D000]/30 transition cursor-pointer flex items-center gap-0.5 shrink-0"
+              title="Return to Configure to modify event parameters"
+            >
+              <span>Edit</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          )}
+
+          {isHistoricalView && (
+            <span className="text-[10px] font-semibold text-[#5A6E62] bg-[#EAEFEA] px-2 py-0.5 rounded border border-[#D5E0D5]">
+              Read-only
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Grid of Key Event Parameters */}

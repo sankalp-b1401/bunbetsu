@@ -21,6 +21,7 @@ import {
   AlertCircle,
   RotateCcw,
   Loader2,
+  History,
 } from 'lucide-react';
 
 export const PlanDashboard: React.FC<PlanDashboardProps> = ({
@@ -42,6 +43,13 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   onBackToConfigure,
   onRecalculatePrediction,
   onCalculateRoutes,
+  isHistoricalView = false,
+  historicalCreatedAt,
+  historicalEventName,
+  onExitHistoricalView,
+  onSaveHistory,
+  isSavingHistory = false,
+  hasSavedHistory = false,
 }) => {
   // Presentation state for map layer visibility
   const [showBoundary, setShowBoundary] = useState<boolean>(true);
@@ -76,8 +84,33 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   return (
     <div className="w-full h-full flex flex-col bg-[#F7F9F5] text-[#202820] overflow-y-auto lg:overflow-hidden select-none font-sans p-2 sm:p-2.5 lg:p-3 space-y-2">
 
+      {/* HISTORICAL PLAN READ-ONLY BANNER */}
+      {isHistoricalView && (
+        <div className="p-2 sm:p-2.5 bg-[#EAF5E6] border border-[#C5D3C1] rounded-xl flex items-center justify-between gap-3 text-xs text-[#103822] shadow-2xs shrink-0">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-[#004B20] shrink-0" />
+            <span className="font-semibold">
+              Historical Event Plan: Viewing saved snapshot for &ldquo;{historicalEventName || eventDetails.festName}&rdquo;
+              {historicalCreatedAt ? ` • Saved on ${new Date(historicalCreatedAt).toLocaleDateString()}` : ''}
+            </span>
+            <span className="px-2 py-0.5 bg-[#004B20] text-white rounded text-[10px] font-bold uppercase tracking-wider">
+              Read-Only
+            </span>
+          </div>
+          {onExitHistoricalView && (
+            <button
+              type="button"
+              onClick={onExitHistoricalView}
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#004B20] hover:bg-[#003B19] text-white rounded-md text-xs font-bold transition cursor-pointer shrink-0"
+            >
+              <span>Back to Dashboard</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* STALE PREDICTION WARNING BANNER */}
-      {predictionStale && (
+      {!isHistoricalView && predictionStale && (
         <div className="p-2 sm:p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs shrink-0">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
@@ -221,7 +254,11 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 eventDetails={eventDetails}
                 locationsCount={locations.length}
                 prediction={prediction}
-                onEditClick={onBackToConfigure}
+                onEditClick={isHistoricalView ? undefined : onBackToConfigure}
+                isHistoricalView={isHistoricalView}
+                onSaveHistory={onSaveHistory}
+                isSavingHistory={isSavingHistory}
+                hasSavedHistory={hasSavedHistory}
               />
             </div>
           </div>

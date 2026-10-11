@@ -658,6 +658,16 @@ export interface PlanDashboardProps {
   onBackToConfigure: () => void;
   onRecalculatePrediction: () => void;
   onCalculateRoutes?: () => void;
+
+  // Event History props
+  isHistoricalView?: boolean;
+  historicalCreatedAt?: string;
+  historicalEventName?: string;
+  onExitHistoricalView?: () => void;
+  onSaveHistory?: () => void;
+  isSavingHistory?: boolean;
+  hasSavedHistory?: boolean;
+  isGuest?: boolean;
 }
 
 export interface AuthUser {
@@ -668,9 +678,39 @@ export interface AuthUser {
   isGuest?: boolean;
 }
 
+export interface EventHistorySnapshot {
+  schema_version: number;
+  campus: Campus;
+  allCampusLocations?: CampusLocation[];
+  locations: CampusLocation[];
+  eventDetails: EventDetails;
+  entryGate: EntryGate | null;
+  prediction: PredictionResult | null;
+  binRecommendations: BinRecommendationResult | null;
+  roadBinRecommendations?: RoadBinRecommendationResult | null;
+  routeResult: RoutePlanResult | null;
+  diagnostics?: CampusPlanDiagnostics | null;
+  templateName?: string | null;
+  savedAt?: string;
+}
+
+export interface EventHistoryRecord {
+  id: string;
+  user_id: string;
+  event_name: string;
+  campus_name: string;
+  template_name?: string | null;
+  event_snapshot: EventHistorySnapshot;
+  created_at: string;
+}
+
 export interface DashboardEventItem {
   id: string;
   name: string;
+  campus_name?: string;
+  template_name?: string | null;
+  created_at?: string;
+  event_snapshot?: EventHistorySnapshot;
 }
 
 export interface SavedTemplateData {

@@ -23,6 +23,8 @@ interface DashboardPageProps {
   onDeleteTemplate?: (templateId: string) => void;
   isLoadingTemplates?: boolean;
   templatesError?: string | null;
+  isLoadingEvents?: boolean;
+  eventsError?: string | null;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -36,6 +38,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onDeleteTemplate,
   isLoadingTemplates = false,
   templatesError = null,
+  isLoadingEvents = false,
+  eventsError = null,
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardViewTab>('dashboard');
 
@@ -84,6 +88,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 onViewAll={() => setActiveTab('events')}
                 onStartPlanning={onStartPlanning}
                 onSelectEvent={onSelectEvent}
+                isLoading={isLoadingEvents}
+                error={eventsError}
               />
 
               <SavedTemplatesPanel
@@ -121,7 +127,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
 
             <div className="bg-white rounded-2xl border border-[#E1E8DE] p-5 sm:p-6 shadow-2xs">
-              {recentEvents.length === 0 ? (
+              {isLoadingEvents ? (
+                <div className="py-14 text-center">
+                  <p className="text-sm font-semibold text-[#183E28]">
+                    Loading your saved event plans...
+                  </p>
+                </div>
+              ) : eventsError ? (
+                <div className="py-14 text-center space-y-2">
+                  <p className="text-sm font-semibold text-red-600">
+                    {eventsError}
+                  </p>
+                  <p className="text-xs text-[#667267]">
+                    Unable to retrieve event history from database.
+                  </p>
+                </div>
+              ) : recentEvents.length === 0 ? (
                 <div className="py-14 text-center space-y-3">
                   <p className="text-sm font-semibold text-[#183E28]">
                     No saved event plans found.
@@ -148,8 +169,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       onClick={() => onSelectEvent?.(evt)}
                       className="py-3 px-3 rounded-lg text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer flex items-center justify-between"
                     >
-                      <span>{evt.name}</span>
-                      <span className="text-xs text-[#667267]">Open plan →</span>
+                      <div className="flex-1 truncate">
+                        <span>{evt.name}</span>
+                        {evt.campus_name && (
+                          <span className="text-xs text-[#8A9C8F] font-normal ml-2">
+                            • {evt.campus_name}
+                          </span>
+                        )}
+                        {evt.created_at && (
+                          <span className="text-xs text-[#8A9C8F] font-normal ml-2">
+                            • {new Date(evt.created_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-[#0B4222] font-bold shrink-0 ml-3">
+                        Open plan →
+                      </span>
                     </div>
                   ))}
                 </div>

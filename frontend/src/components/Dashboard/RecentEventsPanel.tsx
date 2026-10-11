@@ -7,6 +7,8 @@ interface RecentEventsPanelProps {
   onStartPlanning: () => void;
   onSelectEvent?: (event: DashboardEventItem) => void;
   maxVisible?: number;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
 export const RecentEventsPanel: React.FC<RecentEventsPanelProps> = ({
@@ -15,6 +17,8 @@ export const RecentEventsPanel: React.FC<RecentEventsPanelProps> = ({
   onStartPlanning,
   onSelectEvent,
   maxVisible = 6,
+  isLoading = false,
+  error = null,
 }) => {
   const visibleEvents = events.slice(0, maxVisible);
 
@@ -42,7 +46,19 @@ export const RecentEventsPanel: React.FC<RecentEventsPanelProps> = ({
 
         {/* Event List (5-10 max fitting without scroll) or Empty State */}
         <div className="mt-1.5 overflow-hidden">
-          {visibleEvents.length === 0 ? (
+          {isLoading ? (
+            <div className="py-7 sm:py-9 text-center space-y-1">
+              <p className="text-xs text-[#183E28] font-semibold">
+                Loading recent events...
+              </p>
+            </div>
+          ) : error ? (
+            <div className="py-7 sm:py-9 text-center space-y-1">
+              <p className="text-xs text-red-600 font-semibold">
+                {error}
+              </p>
+            </div>
+          ) : visibleEvents.length === 0 ? (
             <div className="py-7 sm:py-9 text-center space-y-2">
               <p className="text-xs text-[#667267] font-medium leading-relaxed">
                 No events yet. Start planning your first event.
@@ -64,10 +80,15 @@ export const RecentEventsPanel: React.FC<RecentEventsPanelProps> = ({
                 <div
                   key={evt.id}
                   onClick={() => onSelectEvent?.(evt)}
-                  className="py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer truncate"
+                  className="py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-[#1F2937] hover:text-[#0B4222] hover:bg-[#F9FAF7] transition cursor-pointer flex items-center justify-between"
                   title={evt.name}
                 >
-                  {evt.name}
+                  <span className="truncate">{evt.name}</span>
+                  {evt.campus_name && (
+                    <span className="text-[10px] text-[#8A9C8F] font-normal ml-2 shrink-0 truncate max-w-[120px]">
+                      {evt.campus_name}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
