@@ -38,6 +38,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
   binRecommendations = null,
   roadBinRecommendations = null,
   sensitivitySeries,
+  entryGate = null,
   onBackToConfigure,
   onRecalculatePrediction,
   onCalculateRoutes,
@@ -210,6 +211,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 selectedRouteId={selectedRouteId}
                 onSelectRoute={handleSelectRoute}
                 isRoutesStale={routesStale}
+                entryGate={entryGate}
               />
             </div>
 

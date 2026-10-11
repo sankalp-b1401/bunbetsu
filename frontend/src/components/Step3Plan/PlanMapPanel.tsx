@@ -8,6 +8,7 @@ import {
   BinRecommendationResult,
   RoadBinRecommendationResult,
   RoutePlanResult,
+  EntryGate,
 } from '../../types/bunbetsu';
 import { CampusMap } from '../Map/CampusMap';
 import { PlanLegend } from './PlanLegend';
@@ -37,6 +38,7 @@ interface PlanMapPanelProps {
   selectedRouteId: string | null;
   onSelectRoute?: (routeId: string | null) => void;
   isRoutesStale?: boolean;
+  entryGate?: EntryGate | null;
 }
 
 export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
@@ -59,6 +61,7 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
   selectedRouteId,
   onSelectRoute,
   isRoutesStale = false,
+  entryGate = null,
 }) => {
   const [recenterTrigger, setRecenterTrigger] = useState<number>(0);
   const [isLegendOpen, setIsLegendOpen] = useState<boolean>(false);
@@ -159,6 +162,8 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
           onSelectRoute={onSelectRoute}
           mapViewMode="map"
           showActivityIcons={showActivityIcons}
+          isolateToCampus={true}
+          entryGate={entryGate}
         />
 
         {/* Map Scale Indicator (Mocked per standard visual design) */}

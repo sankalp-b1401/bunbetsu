@@ -21,6 +21,7 @@ import {
   EventDetails,
   RoadBinRecommendationResult,
   BinRecommendationResult,
+  EntryGate,
 } from '../src/types/bunbetsu';
 
 let passedCount = 0;
@@ -92,6 +93,12 @@ const mockLocations: CampusLocation[] = [
     center: [77.186, 28.546],
   },
 ];
+
+const mockGate: EntryGate = {
+  id: 'entry-gate',
+  name: 'Gate 1',
+  coordinates: [77.186, 28.546],
+};
 
 async function runRoadBinIntegrationTests() {
   console.log('--- Running Road-Bin Recommendations Frontend Integration Tests ---');
@@ -189,6 +196,7 @@ async function runRoadBinIntegrationTests() {
     campus: mockCampusA,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockGate,
   });
 
   // Check 1: API response contains road-bin result

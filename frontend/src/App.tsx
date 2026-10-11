@@ -18,6 +18,7 @@ import {
   RoutePlanResult,
   BinRecommendationResult,
   RoadBinRecommendationResult,
+  EntryGate,
 } from './types/bunbetsu';
 import { requestCampusPlan } from './services/planningApi';
 
@@ -28,6 +29,9 @@ export default function App() {
 
   // Selected campus state: null by default (no auto-selected campus)
   const [selectedCampus, setSelectedCampus] = useState<Campus | null>(null);
+
+  // Dedicated entry gate state: null by default; required before proceeding to Step 3
+  const [entryGate, setEntryGate] = useState<EntryGate | null>(null);
 
   // Master pool of all locations for this campus (both preset campus zones and user-created custom areas)
   const [allCampusLocations, setAllCampusLocations] = useState<CampusLocation[]>([]);
@@ -55,7 +59,7 @@ export default function App() {
   const [routesError, setRoutesError] = useState<string | null>(null);
   const [isPlanStale, setIsPlanStale] = useState<boolean>(false);
 
-  // Campus selection change handler: clears prior planning outputs
+  // Campus selection change handler: clears prior planning outputs and entry gate
   const handleSelectCampus = (newCampus: Campus) => {
     setSelectedCampus(newCampus);
     const initialPool: CampusLocation[] = (newCampus.defaultLocations || []).map((loc) => ({
@@ -65,6 +69,7 @@ export default function App() {
     }));
     setAllCampusLocations(initialPool);
     setLocations([]);
+    setEntryGate(null);
     setSelectedLocationId(null);
     setPredictionResult(null);
     setBinRecommendations(null);
@@ -74,6 +79,14 @@ export default function App() {
     setRoutesError(null);
     setIsPlanStale(false);
     setStep1Completed(false);
+  };
+
+  const handleSetEntryGate = (gate: EntryGate) => {
+    setEntryGate(gate);
+    if (planningError) setPlanningError(null);
+    if (predictionResult || binRecommendations || roadBinRecommendations || routeResult) {
+      setIsPlanStale(true);
+    }
   };
 
   // Step 1 completion: User confirms campus
@@ -213,6 +226,10 @@ export default function App() {
       );
       return;
     }
+    if (!entryGate) {
+      setPlanningError('Please place the entry gate inside the campus before generating the plan.');
+      return;
+    }
 
     setIsPlanning(true);
     setPlanningError(null);
@@ -223,6 +240,7 @@ export default function App() {
         eventDetails,
         campus: activeCampusWithLocations || selectedCampus,
         locations,
+        entryGate,
         maxSnapDistanceM: 50.0,
       });
 
@@ -279,6 +297,10 @@ export default function App() {
       setPlanningError('Expected footfall must be a positive integer.');
       return;
     }
+    if (!entryGate) {
+      setPlanningError('Please place the entry gate inside the campus before generating the plan.');
+      return;
+    }
     if (locations.length === 0) {
       setPlanningError('At least one event location must be configured on the map.');
       return;
@@ -312,17 +334,31 @@ export default function App() {
 
   const canGoToPlan =
     step1Completed &&
+    Boolean(entryGate) &&
     locations.length > 0 &&
     Boolean(eventDetails.festName.trim()) &&
     eventDetails.durationDays > 0 &&
     eventDetails.expectedFootfall > 0;
+
+  const handleStepClick = (step: 1 | 2 | 3) => {
+    if (step === 3 && !canGoToPlan) {
+      if (!entryGate) {
+        setPlanningError('Please place the entry gate inside the campus before generating the plan.');
+      }
+      return;
+    }
+    if (step === 2 && !step1Completed) {
+      return;
+    }
+    setCurrentStep(step);
+  };
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#F7F9F5] text-[#202820] select-none font-sans">
       {/* Top Persistent Navbar with Step Indicator */}
       <Navbar
         currentStep={currentStep}
-        onStepClick={setCurrentStep}
+        onStepClick={handleStepClick}
         step1Completed={step1Completed}
         canGoToPlan={canGoToPlan}
         onResetPlan={() => {
@@ -363,6 +399,8 @@ export default function App() {
             onTriggerPlan={handleTriggerPlan}
             isPredicting={isPlanning}
             predictionError={planningError}
+            entryGate={entryGate}
+            onSetEntryGate={handleSetEntryGate}
           />
         )}
 
@@ -381,6 +419,7 @@ export default function App() {
             routesStale={isPlanStale}
             binRecommendations={binRecommendations}
             roadBinRecommendations={roadBinRecommendations}
+            entryGate={entryGate}
             onBackToConfigure={() => setCurrentStep(2)}
             onRecalculatePrediction={executePlan}
           />

@@ -1,6 +1,6 @@
 import React from 'react';
-import { MousePointer, PlusCircle, Trash2, Route, Eye, EyeOff } from 'lucide-react';
-import { MapMode } from '../../types/bunbetsu';
+import { MousePointer, PlusCircle, Trash2, Route, Eye, EyeOff, DoorOpen } from 'lucide-react';
+import { MapMode, EntryGate } from '../../types/bunbetsu';
 
 interface MapToolbarProps {
   currentMode: MapMode;
@@ -9,6 +9,8 @@ interface MapToolbarProps {
   showRoutes?: boolean;
   onToggleRoutes?: (show: boolean) => void;
   isRoutesStale?: boolean;
+  hasGateTool?: boolean;
+  entryGate?: EntryGate | null;
 }
 
 export const MapToolbar: React.FC<MapToolbarProps> = ({
@@ -18,6 +20,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   showRoutes = true,
   onToggleRoutes,
   isRoutesStale = false,
+  hasGateTool = false,
+  entryGate = null,
 }) => {
   return (
     <div className="flex items-center justify-between gap-2.5 w-full pointer-events-auto">
@@ -67,6 +71,25 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
           <Trash2 className="w-3.5 h-3.5" />
           <span>Delete area</span>
         </button>
+
+        {hasGateTool && (
+          <button
+            type="button"
+            onClick={() => onModeChange('addGate')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-all cursor-pointer font-sans ${
+              currentMode === 'addGate'
+                ? 'bg-[#004B20] text-white shadow-xs ring-2 ring-[#70D000]/40'
+                : entryGate
+                ? 'bg-[#EAF5E6] text-[#004B20] hover:bg-[#DCEDD6]'
+                : 'text-[#667267] hover:bg-[#F7F9F5] hover:text-[#202820]'
+            }`}
+            title={entryGate ? 'Click to reposition entry gate on the map' : 'Click to place entry gate on the map'}
+            aria-label={entryGate ? 'Reposition gate' : 'Entry gate'}
+          >
+            <DoorOpen className="w-3.5 h-3.5" />
+            <span>{entryGate ? 'Reposition gate' : 'Entry gate'}</span>
+          </button>
+        )}
 
         {hasRoutes && (
           <button

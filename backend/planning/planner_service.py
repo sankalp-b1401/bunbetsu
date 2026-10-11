@@ -505,6 +505,20 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                 )
                 for loc in request.locations
             ]
+            if request.entry_gate:
+                route_locations.append(
+                    LocationRouteRequest(
+                        id=request.entry_gate.id,
+                        name=request.entry_gate.name,
+                        activities=[],
+                        geometry={
+                            "type": "Point",
+                            "coordinates": request.entry_gate.coordinates,
+                        },
+                        center=request.entry_gate.coordinates,
+                        weight=1.0,
+                    )
+                )
             route_plan_req = RoutePlanRequest(
                 boundary=request.campus_boundary,
                 locations=route_locations,

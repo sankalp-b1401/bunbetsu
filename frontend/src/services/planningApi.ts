@@ -20,6 +20,7 @@ import {
   PredictionResult,
   RecommendedBinItem,
   RoadBinRecommendationResult,
+  EntryGate,
 } from "../types/bunbetsu";
 import { normalizeHeatmapData } from "../utils/heatmapPalettes";
 
@@ -29,6 +30,7 @@ export interface RequestCampusPlanParams {
   eventDetails: EventDetails;
   campus: Campus;
   locations: CampusLocation[];
+  entryGate: EntryGate;
   maxSnapDistanceM?: number;
   alternativePathToleranceM?: number;
   maxPathsPerPair?: number;
@@ -46,6 +48,7 @@ export async function requestCampusPlan(
     eventDetails,
     campus,
     locations,
+    entryGate,
     maxSnapDistanceM = 50.0,
     alternativePathToleranceM = 500.0,
     maxPathsPerPair = 20,
@@ -69,6 +72,11 @@ export async function requestCampusPlan(
   }
   if (!eventDetails.expectedFootfall || eventDetails.expectedFootfall <= 0) {
     throw new Error("Expected footfall must be a positive integer.");
+  }
+  if (!entryGate || !entryGate.coordinates || entryGate.coordinates.length < 2) {
+    throw new Error(
+      "An entry gate placed inside the campus boundary is required before planning.",
+    );
   }
   if (!locations || locations.length === 0) {
     throw new Error("At least one event location must be configured.");
@@ -130,6 +138,11 @@ export async function requestCampusPlan(
     campus_state: campus.state.trim(),
     activities: distinctActivities,
     campus_boundary: boundary,
+    entry_gate: {
+      id: entryGate.id,
+      name: entryGate.name,
+      coordinates: entryGate.coordinates,
+    },
     locations: locations.map((loc) => ({
       id: loc.id,
       name: loc.name.trim(),

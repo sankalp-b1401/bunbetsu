@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Feature, FeatureCollection } from "geojson";
-import { Plus, Minus, Navigation, ShieldCheck, Check, X, Trash2, RotateCcw } from "lucide-react";
+import { Plus, Minus, Navigation, ShieldCheck, Check, X, Trash2, RotateCcw, DoorOpen, AlertCircle } from "lucide-react";
 import {
   Campus,
   CampusLocation,
@@ -13,6 +13,7 @@ import {
   BinRecommendationResult,
   RoadBinRecommendationResult,
   MapMode,
+  EntryGate,
 } from "../../types/bunbetsu";
 import { ACTIVITIES, ActivityIcon } from "../../constants/activities";
 import {
@@ -21,6 +22,9 @@ import {
   closePolygonRing,
   isRingClosed,
   validatePolygonRing,
+  isPointInsideCampus,
+  isPolygonContainedInCampus,
+  computeCampusMaskGeometry,
 } from "../../utils/geoUtils";
 import { ActivityLegend } from "./ActivityLegend";
 import { MapToolbar } from "./MapToolbar";
@@ -94,6 +98,9 @@ interface CampusMapProps {
   onSelectRoute?: (routeId: string | null) => void;
   mapViewMode?: "map" | "satellite" | "terrain";
   showActivityIcons?: boolean;
+  isolateToCampus?: boolean;
+  entryGate?: EntryGate | null;
+  onSetEntryGate?: (gate: EntryGate) => void;
 }
 
 export const CampusMap: React.FC<CampusMapProps> = ({
@@ -134,6 +141,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   onSelectRoute,
   mapViewMode = "map",
   showActivityIcons = true,
+  isolateToCampus = false,
+  entryGate = null,
+  onSetEntryGate,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -141,12 +151,32 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   const draftMarkerRefs = useRef<maplibregl.Marker[]>([]);
   const userLocationMarkerRef = useRef<maplibregl.Marker[]>([]);
   const binMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const gateMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const gateBinMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   const [currentMode, setCurrentMode] = useState<MapMode>("select");
   const currentModeRef = useRef<MapMode>(currentMode);
   useEffect(() => {
     currentModeRef.current = currentMode;
   }, [currentMode]);
+
+  const onSetEntryGateRef = useRef(onSetEntryGate);
+  useEffect(() => {
+    onSetEntryGateRef.current = onSetEntryGate;
+  }, [onSetEntryGate]);
+
+  const entryGateRef = useRef(entryGate);
+  useEffect(() => {
+    entryGateRef.current = entryGate;
+  }, [entryGate]);
+
+  const isolateToCampusRef = useRef(isolateToCampus);
+  useEffect(() => {
+    isolateToCampusRef.current = isolateToCampus;
+  }, [isolateToCampus]);
+
+  const [gatePlacementNotice, setGatePlacementNotice] = useState<string | null>(null);
+  const maskAnimFrameRef = useRef<number | null>(null);
 
   const onDeleteAreaRef = useRef(onDeleteArea);
   useEffect(() => {
@@ -465,7 +495,11 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     }
 
     const handleMapBackgroundClick = (e: maplibregl.MapMouseEvent) => {
-      if (currentModeRef.current === "addArea" || currentModeRef.current === "deleteArea") {
+      if (
+        currentModeRef.current === "addArea" ||
+        currentModeRef.current === "deleteArea" ||
+        currentModeRef.current === "addGate"
+      ) {
         return;
       }
       if (!onClearLocationSelectionRef.current) {
@@ -516,6 +550,10 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       draftMarkerRefs.current.forEach((m) => m.remove());
       userLocationMarkerRef.current.forEach((m) => m.remove());
       binMarkersRef.current.forEach((m) => m.remove());
+      gateMarkerRef.current?.remove();
+      gateMarkerRef.current = null;
+      gateBinMarkersRef.current.forEach((m) => m.remove());
+      gateBinMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -530,6 +568,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     userLocationMarkerRef.current = [];
 
     if (userLocation) {
+      if (isolateToCampus && campus) {
+        const campusGeom = campus.geometry || campus.boundaryGeometry;
+        if (campusGeom && !isPointInsideCampus(userLocation, campusGeom)) {
+          return;
+        }
+      }
+
       const el = document.createElement("div");
       el.className =
         "relative flex items-center justify-center cursor-pointer pointer-events-auto select-none";
@@ -547,7 +592,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
       userLocationMarkerRef.current.push(marker);
     }
-  }, [userLocation]);
+  }, [userLocation, isolateToCampus, campus]);
 
   // Update map and layers whenever campus changes
   useEffect(() => {
@@ -636,9 +681,128 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     }
   }, [recenterTrigger]);
 
+  // Outside Mask Update Function (Visible Viewport - Campus Polygon/MultiPolygon)
+  const updateMask = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const geom = campus?.geometry || campus?.boundaryGeometry;
+    if (!isolateToCampus || !geom || (geom.type !== "Polygon" && geom.type !== "MultiPolygon")) {
+      if (map.getSource("campus-mask-src")) {
+        (map.getSource("campus-mask-src") as maplibregl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: [],
+        });
+        if (map.getLayer("campus-mask-fill")) {
+          map.setLayoutProperty("campus-mask-fill", "visibility", "none");
+        }
+      }
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const spanLng = bounds.getEast() - bounds.getWest();
+    const spanLat = bounds.getNorth() - bounds.getSouth();
+    const west = Math.max(-180, bounds.getWest() - Math.max(spanLng, 10));
+    const east = Math.min(180, bounds.getEast() + Math.max(spanLng, 10));
+    const south = Math.max(-85, bounds.getSouth() - Math.max(spanLat, 10));
+    const north = Math.min(85, bounds.getNorth() + Math.max(spanLat, 10));
+
+    const maskGeom = computeCampusMaskGeometry([west, south, east, north], geom);
+    const maskData: FeatureCollection = {
+      type: "FeatureCollection",
+      features: maskGeom
+        ? [
+            {
+              type: "Feature",
+              properties: {},
+              geometry: maskGeom as any,
+            },
+          ]
+        : [],
+    };
+
+    if (map.getSource("campus-mask-src")) {
+      (map.getSource("campus-mask-src") as maplibregl.GeoJSONSource).setData(maskData);
+      if (map.getLayer("campus-mask-fill")) {
+        map.setLayoutProperty("campus-mask-fill", "visibility", "visible");
+      }
+    } else {
+      map.addSource("campus-mask-src", {
+        type: "geojson",
+        data: maskData,
+      });
+
+      map.addLayer(
+        {
+          id: "campus-mask-fill",
+          type: "fill",
+          source: "campus-mask-src",
+          layout: {
+            visibility: "visible",
+          },
+          paint: {
+            "fill-color": "#FFFFFF",
+            "fill-opacity": 1.0,
+          },
+        },
+        map.getLayer("campus-boundary-stroke") ? "campus-boundary-stroke" : undefined
+      );
+    }
+  }, [campus, isolateToCampus]);
+
+  // Mask Viewport Event Listeners
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleViewportChange = () => {
+      updateMask();
+    };
+
+    const handleThrottledMove = () => {
+      if (maskAnimFrameRef.current !== null) return;
+      maskAnimFrameRef.current = requestAnimationFrame(() => {
+        maskAnimFrameRef.current = null;
+        updateMask();
+      });
+    };
+
+    map.on("move", handleThrottledMove);
+    map.on("moveend", handleViewportChange);
+    map.on("zoomend", handleViewportChange);
+    map.on("resize", handleViewportChange);
+
+    if (map.isStyleLoaded()) {
+      updateMask();
+    } else {
+      map.once("load", updateMask);
+    }
+
+    return () => {
+      if (maskAnimFrameRef.current !== null) {
+        cancelAnimationFrame(maskAnimFrameRef.current);
+        maskAnimFrameRef.current = null;
+      }
+      map.off("move", handleThrottledMove);
+      map.off("moveend", handleViewportChange);
+      map.off("zoomend", handleViewportChange);
+      map.off("resize", handleViewportChange);
+    };
+  }, [updateMask]);
+
   // Update GeoJSON Layers & Markers
   const updateMapLayers = (map: maplibregl.Map) => {
     if (!campus) {
+      if (map.getSource("campus-mask-src")) {
+        (map.getSource("campus-mask-src") as maplibregl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: [],
+        });
+        if (map.getLayer("campus-mask-fill")) {
+          map.setLayoutProperty("campus-mask-fill", "visibility", "none");
+        }
+      }
       if (map.getSource("campus-boundary-src")) {
         (
           map.getSource("campus-boundary-src") as maplibregl.GeoJSONSource
@@ -725,6 +889,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         features: [],
       });
     }
+
+    // 1b. Update outside mask
+    updateMask();
 
     // 2. Zone Polygons
     if (!readOnlyPreview) {
@@ -1450,6 +1617,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           return;
         }
 
+        if (isolateToCampus && campus) {
+          const campusGeom = campus.geometry || campus.boundaryGeometry;
+          if (campusGeom && !isPointInsideCampus(bin.coordinates, campusGeom)) {
+            return;
+          }
+        }
+
         const el = document.createElement("div");
         el.className =
           "group flex items-center justify-center cursor-pointer select-none";
@@ -1492,6 +1666,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         ) {
           console.warn(`[CampusMap] Skipping road bin marker ${rbin.id} with invalid coordinates:`, rbin.coordinates);
           return;
+        }
+
+        if (isolateToCampus && campus) {
+          const campusGeom = campus.geometry || campus.boundaryGeometry;
+          if (campusGeom && !isPointInsideCampus(rbin.coordinates, campusGeom)) {
+            return;
+          }
         }
 
         const streams = Array.isArray(rbin.stream_types) && rbin.stream_types.length > 0
@@ -1554,7 +1735,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         binMarkersRef.current.push(marker);
       });
     }
-  }, [showBins, binRecommendations, roadBinRecommendations]);
+  }, [showBins, binRecommendations, roadBinRecommendations, isolateToCampus, campus]);
 
   // Fit bounds when a route is selected
   useEffect(() => {
@@ -1637,6 +1818,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       }
 
       if (!coords) return;
+
+      if (isolateToCampus && campus) {
+        const campusGeom = campus.geometry || campus.boundaryGeometry;
+        if (campusGeom && !isPointInsideCampus(coords, campusGeom)) {
+          return;
+        }
+      }
 
       const isSelected = loc.id === selectedLocationId;
       const hasAct = loc.activities && loc.activities.length > 0;
@@ -1810,6 +1998,13 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             : null);
         if (!coords) return;
 
+        if (isolateToCampus && campus) {
+          const campusGeom = campus.geometry || campus.boundaryGeometry;
+          if (campusGeom && !isPointInsideCampus(coords, campusGeom)) {
+            return;
+          }
+        }
+
         const el = document.createElement("div");
         el.className =
           "group flex flex-col items-center cursor-pointer select-none";
@@ -1883,6 +2078,12 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           Number(e.lngLat.lng.toFixed(6)),
           Number(e.lngLat.lat.toFixed(6)),
         ];
+
+        // Reject vertex clicks outside campus boundary
+        const campusGeom = campus?.geometry || campus?.boundaryGeometry;
+        if (campusGeom && !isPointInsideCampus(point as [number, number], campusGeom)) {
+          return;
+        }
 
         // 1. If fewer than 3 distinct vertices have been added, add normally
         if (currentPoints.length < 3) {
@@ -1987,6 +2188,144 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       draftMarkerRefs.current = [];
     }
   }, [currentMode, isDraftClosed]);
+
+  // Gate placement mode interaction
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (currentMode === "addGate") {
+      const container = map.getContainer();
+      const canvasContainer = map.getCanvasContainer();
+      const canvas = map.getCanvas();
+
+      container.classList.add("maplibregl-crosshair", "mode-add-gate");
+      canvasContainer.classList.add("maplibregl-crosshair", "mode-add-gate");
+      canvas.classList.add("mode-add-gate");
+      canvas.style.cursor = "crosshair";
+      canvasContainer.style.cursor = "crosshair";
+
+      const handleGateClick = (e: maplibregl.MapMouseEvent) => {
+        if (currentModeRef.current !== "addGate") return;
+
+        const coords: [number, number] = [
+          Number(e.lngLat.lng.toFixed(6)),
+          Number(e.lngLat.lat.toFixed(6)),
+        ];
+
+        const campusGeom = campus?.geometry || campus?.boundaryGeometry;
+        if (!campusGeom || !isPointInsideCampus(coords, campusGeom)) {
+          setGatePlacementNotice("Entry gate marker must be placed inside the campus boundary.");
+          setTimeout(() => setGatePlacementNotice(null), 3500);
+          return;
+        }
+
+        const newGate: EntryGate = {
+          id: "entry-gate",
+          name: "Entry Gate",
+          coordinates: coords,
+        };
+
+        onSetEntryGateRef.current?.(newGate);
+        setGatePlacementNotice(null);
+        setCurrentMode("select");
+      };
+
+      map.on("click", handleGateClick);
+
+      return () => {
+        map.off("click", handleGateClick);
+        container.classList.remove("maplibregl-crosshair", "mode-add-gate");
+        canvasContainer.classList.remove("maplibregl-crosshair", "mode-add-gate");
+        canvas.classList.remove("mode-add-gate");
+        canvas.style.cursor = "";
+        canvasContainer.style.cursor = "";
+      };
+    }
+  }, [currentMode, campus]);
+
+  // Render Entry Gate and Two Fixed Bins
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (gateMarkerRef.current) {
+      gateMarkerRef.current.remove();
+      gateMarkerRef.current = null;
+    }
+    gateBinMarkersRef.current.forEach((m) => m.remove());
+    gateBinMarkersRef.current = [];
+
+    if (!entryGate || !entryGate.coordinates || entryGate.coordinates.length < 2) {
+      return;
+    }
+
+    const campusGeom = campus?.geometry || campus?.boundaryGeometry;
+    if (isolateToCampus && campusGeom && !isPointInsideCampus(entryGate.coordinates, campusGeom)) {
+      return;
+    }
+
+    // 1. Entry Gate Marker
+    const gateEl = document.createElement("div");
+    gateEl.className = "group flex flex-col items-center cursor-pointer select-none pointer-events-auto";
+    gateEl.setAttribute("data-gate-id", entryGate.id);
+    gateEl.title = `${entryGate.name} (Pedestrian Routing Endpoint)`;
+
+    gateEl.innerHTML = `
+      <div class="relative flex items-center justify-center w-8 h-8 rounded-lg shadow-lg bg-[#004B20] border-2 border-[#70D000] ring-2 ring-white hover:scale-110 transition-transform">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4.5 h-4.5 text-[#70D000]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M13 4h3a2 2 0 0 1 2 2v14"/>
+          <path d="M2 20h20"/>
+          <path d="M13 20V4a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16"/>
+          <circle cx="9" cy="12" r="1"/>
+        </svg>
+      </div>
+      <div class="name-label mt-1 px-2.5 py-0.5 rounded text-[10px] font-bold tracking-tight shadow-md whitespace-nowrap bg-[#004B20] text-[#70D000] border border-[#70D000]/40">
+        ${entryGate.name || "Entry Gate"}
+      </div>
+    `;
+
+    gateEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+
+    const marker = new maplibregl.Marker({ element: gateEl })
+      .setLngLat(entryGate.coordinates)
+      .addTo(map);
+    gateMarkerRef.current = marker;
+
+    // 2. Two Fixed Bins near the gate (one Disposable, one Recyclable)
+    const areBinsVisible = showBins !== false;
+    if (areBinsVisible) {
+      // Disposable Fixed Bin
+      const dispEl = document.createElement("div");
+      dispEl.className = "group flex items-center justify-center cursor-pointer select-none pointer-events-auto";
+      dispEl.innerHTML = `
+        <div class="flex items-center justify-center w-6 h-6 rounded-md shadow-md border-1.5 border-white text-xs hover:scale-110 transition-transform" style="background-color: #2563EB;" title="Entry Gate Disposable Bin (Fixed Infrastructure · 100L)">
+          <span class="text-[11px] leading-none">🗑️</span>
+        </div>
+      `;
+      dispEl.addEventListener("click", (e) => e.stopPropagation());
+      const dispMarker = new maplibregl.Marker({ element: dispEl, offset: [-24, 0] })
+        .setLngLat(entryGate.coordinates)
+        .addTo(map);
+      gateBinMarkersRef.current.push(dispMarker);
+
+      // Recyclable Fixed Bin
+      const recEl = document.createElement("div");
+      recEl.className = "group flex items-center justify-center cursor-pointer select-none pointer-events-auto";
+      recEl.innerHTML = `
+        <div class="flex items-center justify-center w-6 h-6 rounded-md shadow-md border-1.5 border-white text-xs hover:scale-110 transition-transform" style="background-color: #16A34A;" title="Entry Gate Recyclable Bin (Fixed Infrastructure · 100L)">
+          <span class="text-[11px] leading-none">♻️</span>
+        </div>
+      `;
+      recEl.addEventListener("click", (e) => e.stopPropagation());
+      const recMarker = new maplibregl.Marker({ element: recEl, offset: [24, 0] })
+        .setLngLat(entryGate.coordinates)
+        .addTo(map);
+      gateBinMarkersRef.current.push(recMarker);
+    }
+  }, [entryGate, campus, isolateToCampus, showBins]);
 
   // Update drawing layer preview
   useEffect(() => {
@@ -2198,6 +2537,14 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       return;
     }
 
+    const campusGeom = campus?.geometry || campus?.boundaryGeometry;
+    if (campusGeom && !isPolygonContainedInCampus(closedCoords, campusGeom)) {
+      alert(
+        "The drawn area extends outside the campus boundary. The location must be wholly contained within the campus."
+      );
+      return;
+    }
+
     setPendingNewArea({
       coordinates: closedCoords,
       area: validation.area!,
@@ -2221,6 +2568,14 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       alert(
         validation.error ||
           "A valid polygon with positive area is required to add an event location.",
+      );
+      return;
+    }
+
+    const campusGeom = campus?.geometry || campus?.boundaryGeometry;
+    if (campusGeom && !isPolygonContainedInCampus(pendingNewArea.coordinates, campusGeom)) {
+      alert(
+        "The drawn area extends outside the campus boundary. It cannot be saved."
       );
       return;
     }
@@ -2359,7 +2714,46 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             showRoutes={showRoutes}
             onToggleRoutes={onToggleShowRoutes}
             isRoutesStale={isRoutesStale}
+            hasGateTool={Boolean(onSetEntryGate)}
+            entryGate={entryGate}
           />
+        </div>
+      )}
+
+      {/* Gate Placement Mode Active Banner */}
+      {currentMode === "addGate" && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-lg shadow-lg border border-[#004B20]/40 text-xs font-sans">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#004B20] ring-2 ring-[#70D000]" />
+            <span className="font-bold text-[#004B20]">
+              {entryGate ? "Reposition Entry Gate" : "Place Entry Gate"}
+            </span>
+          </div>
+          <span className="text-neutral-700">
+            Click inside the campus boundary to {entryGate ? "reposition" : "set"} the gate
+          </span>
+          <button
+            type="button"
+            onClick={() => setCurrentMode("select")}
+            className="p-1 rounded text-neutral-500 hover:bg-neutral-100 cursor-pointer ml-1"
+            title="Cancel gate placement"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Gate Placement Outside Boundary Toast */}
+      {gatePlacementNotice && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2 rounded-lg shadow-md text-xs font-sans">
+          <span>{gatePlacementNotice}</span>
+          <button
+            type="button"
+            onClick={() => setGatePlacementNotice(null)}
+            className="p-0.5 text-amber-700 hover:text-amber-900 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+          </button>
         </div>
       )}
 

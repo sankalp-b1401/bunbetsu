@@ -88,6 +88,11 @@ def base_planning_payload():
         "duration_days": 3,
         "campus_state": "Delhi",
         "campus_boundary": SAMPLE_BOUNDARY,
+        "entry_gate": {
+            "id": "entry-gate",
+            "name": "Main Entrance Gate",
+            "coordinates": [77.202, 28.602],
+        },
         "locations": [
             {
                 "id": "loc-food-quad",
@@ -448,3 +453,57 @@ def test_13_road_bin_recommendations_in_campus_plan_response(base_planning_paylo
             assert "normalized_popularity_score" in p0
             assert "served_location_ids" in p0
             assert "served_location_distances_m" in p0
+
+
+def test_14_missing_entry_gate_fails_validation(base_planning_payload):
+    payload = dict(base_planning_payload)
+    del payload["entry_gate"]
+    resp = client.post("/api/planning/plan", json=payload)
+    assert resp.status_code == 422
+    err_detail = str(resp.json()["detail"])
+    assert "entry_gate" in err_detail
+
+
+def test_15_entry_gate_outside_campus_boundary_fails_validation(base_planning_payload):
+    payload = dict(base_planning_payload)
+    # Outside SAMPLE_BOUNDARY ([77.200, 28.600] to [77.220, 28.620])
+    payload["entry_gate"] = {
+        "id": "entry-gate",
+        "name": "Outside Gate",
+        "coordinates": [77.300, 28.700],
+    }
+    resp = client.post("/api/planning/plan", json=payload)
+    assert resp.status_code == 422
+    err_detail = str(resp.json()["detail"])
+    assert "inside the campus boundary" in err_detail
+
+
+def test_16_entry_gate_included_in_routing_but_excluded_from_waste_and_bins(base_planning_payload):
+    from routes.route_service import plan_pedestrian_routes
+    with patch("routes.route_service.fetch_osm_data_for_boundary", new_callable=AsyncMock) as mock_osm, \
+         patch("planning.planner_service.plan_pedestrian_routes", wraps=plan_pedestrian_routes) as mock_routes:
+        mock_osm.return_value = MOCK_OSM_DATA
+        resp = client.post("/api/planning/plan", json=base_planning_payload)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # Check plan_pedestrian_routes was called with entry gate
+        assert mock_routes.called
+        route_req = mock_routes.call_args[0][0]
+        gate_loc = next((l for l in route_req.locations if l.id == "entry-gate"), None)
+        assert gate_loc is not None
+        assert gate_loc.name == "Main Entrance Gate"
+        assert gate_loc.geometry["type"] == "Point"
+        assert gate_loc.geometry["coordinates"] == [77.202, 28.602]
+        assert gate_loc.weight == 1.0
+
+        # Check waste prediction does NOT include entry gate
+        pred_locations = data["prediction"]["location_allocations"]
+        assert all(loc["location_name"] != "Main Entrance Gate" for loc in pred_locations)
+        assert len(pred_locations) == 2
+
+        # Check on-location bin recommendations do NOT include entry gate
+        bin_locations = data["bin_recommendations"]["locations"]
+        assert all(loc["id"] != "entry-gate" and loc["location_name"] != "Main Entrance Gate" for loc in bin_locations)
+        assert len(bin_locations) == 2
+

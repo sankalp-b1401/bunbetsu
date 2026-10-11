@@ -14,6 +14,7 @@ import {
   CampusLocation,
   EventDetails,
   ActivityType,
+  EntryGate,
 } from "../../types/bunbetsu";
 import { ACTIVITIES, ActivityIcon } from "../../constants/activities";
 import { CampusMap } from "../Map/CampusMap";
@@ -35,6 +36,8 @@ interface EventConfigurationProps {
   onTriggerPlan: () => void;
   isPredicting?: boolean;
   predictionError?: string | null;
+  entryGate?: EntryGate | null;
+  onSetEntryGate?: (gate: EntryGate) => void;
 }
 
 export const EventConfiguration: React.FC<EventConfigurationProps> = ({
@@ -51,6 +54,8 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
   onTriggerPlan,
   isPredicting = false,
   predictionError = null,
+  entryGate = null,
+  onSetEntryGate,
 }) => {
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
@@ -93,6 +98,10 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
     }
     if (!eventDetails.expectedFootfall || eventDetails.expectedFootfall <= 0) {
       errors.expectedFootfall = "Expected footfall must be a positive number";
+    }
+    if (!entryGate) {
+      errors.entryGate =
+        "Please place the entry gate inside the campus before generating the plan.";
     }
     if (locations.length === 0) {
       errors.locations =
@@ -151,6 +160,9 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
             showToolbar={true}
             showLegend={true}
             heightClass="h-full w-full"
+            isolateToCampus={true}
+            entryGate={entryGate}
+            onSetEntryGate={onSetEntryGate}
           />
         </div>
 
@@ -248,6 +260,52 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Section: Mandatory Entry Gate */}
+            <div className="space-y-2 pb-3.5 border-b border-[#E1E8DE]">
+              <div className="flex items-center justify-between">
+                <span className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
+                  Campus Entry Gate
+                </span>
+                {entryGate ? (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-[#EAF5E6] text-[#004B20] border border-[#70D000]/40">
+                    <Check className="w-3 h-3 stroke-[2.5]" /> Placed
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                    Required
+                  </span>
+                )}
+              </div>
+              {entryGate ? (
+                <div className="p-2.5 rounded-lg border border-[#004B20]/30 bg-[#F7F9F5] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-md bg-[#004B20] text-[#70D000] flex items-center justify-center font-bold text-[11px]">
+                      🚪
+                    </div>
+                    <div>
+                      <div className="font-bold text-[#202820]">{entryGate.name}</div>
+                      <div className="text-[10px] text-[#667267]">
+                        [{entryGate.coordinates[0].toFixed(5)}, {entryGate.coordinates[1].toFixed(5)}]
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold text-[#004B20] bg-white px-2 py-0.5 rounded border border-[#E1E8DE]">
+                    Fixed Bins: 1 Disp + 1 Rec
+                  </span>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 text-xs text-amber-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Use the <strong>Entry Gate tool</strong> on the map toolbar to place the gate inside the campus.</span>
+                </div>
+              )}
+              {validationErrors.entryGate && (
+                <p className="text-xs text-[#B42318] font-medium">
+                  {validationErrors.entryGate}
+                </p>
+              )}
             </div>
 
             {/* Section 2: Selected Locations & Direct Activity Tags Assignment */}
@@ -435,6 +493,12 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
 
           {/* Sticky Bottom Action: Plan Button & Error Display */}
           <div className="pt-3 border-t border-[#E1E8DE] shrink-0 space-y-2">
+            {validationErrors.entryGate && (
+              <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="leading-snug font-medium">{validationErrors.entryGate}</p>
+              </div>
+            )}
             {predictionError && (
               <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-900 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />

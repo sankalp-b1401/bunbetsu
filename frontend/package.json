@@ -9,17 +9,19 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx test/predictionContract.test.ts && tsx test/planningContract.test.ts && tsx test/polygonDrawingAndEraser.test.ts && tsx test/roadBinRecommendationsIntegration.test.ts && tsx test/locationAwareBinRecommendations.test.ts && tsx test/heatmapContractAndPalettes.test.ts"
+    "test": "tsx test/predictionContract.test.ts && tsx test/planningContract.test.ts && tsx test/polygonDrawingAndEraser.test.ts && tsx test/roadBinRecommendationsIntegration.test.ts && tsx test/locationAwareBinRecommendations.test.ts && tsx test/heatmapContractAndPalettes.test.ts && tsx test/entryGateAndIsolation.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@turf/boolean-point-in-polygon": "^7.4.0",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "maplibre-gl": "^6.13.0",
     "motion": "^12.23.24",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"

@@ -11,7 +11,13 @@ export type ActivityType =
   | 'Literary & Fine Arts'
   | 'Hackathon';
 
-export type MapMode = 'select' | 'addArea' | 'deleteArea';
+export type MapMode = 'select' | 'addArea' | 'deleteArea' | 'addGate';
+
+export interface EntryGate {
+  id: string;
+  name: string;
+  coordinates: [number, number]; // [longitude, latitude]
+}
 
 export interface LocationGeometry {
   type: 'Polygon' | 'MultiPolygon' | 'Point';
@@ -467,6 +473,7 @@ export interface CampusPlanPayload {
   baseline_rate_kg_per_person_day?: number;
   activities?: ActivityType[];
   campus_boundary?: any;
+  entry_gate: EntryGate;
   locations: LocationPlanPayload[];
   routing_config?: RoutingConfig;
 }
@@ -631,6 +638,7 @@ export interface PlanDashboardProps {
   campus: Campus;
   eventDetails: EventDetails;
   locations: CampusLocation[];
+  entryGate: EntryGate | null;
 
   prediction: PredictionResult | null;
   predictionLoading: boolean;

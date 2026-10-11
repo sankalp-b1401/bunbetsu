@@ -3,6 +3,9 @@
  * Calculates area in square metres without heavy external GIS libraries.
  */
 
+import polygonClipping from 'polygon-clipping';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+
 const EARTH_RADIUS = 6378137; // WGS84 major radius in meters
 
 /**
@@ -170,3 +173,123 @@ export function validatePolygonRing(points: number[][]): PolygonValidationResult
     center,
   };
 }
+
+/**
+ * Tests whether a [longitude, latitude] coordinate pair lies inside or on the boundary
+ * of the campus Polygon or MultiPolygon geometry.
+ */
+export function isPointInsideCampus(
+  point: [number, number],
+  campusGeometry: any
+): boolean {
+  if (
+    !point ||
+    !Array.isArray(point) ||
+    point.length < 2 ||
+    !Number.isFinite(point[0]) ||
+    !Number.isFinite(point[1])
+  ) {
+    return false;
+  }
+  if (!campusGeometry || !campusGeometry.type || !campusGeometry.coordinates) {
+    return false;
+  }
+  if (campusGeometry.type !== 'Polygon' && campusGeometry.type !== 'MultiPolygon') {
+    return false;
+  }
+  try {
+    return booleanPointInPolygon(point, campusGeometry, { ignoreBoundary: false });
+  } catch (err) {
+    console.warn('[geoUtils] isPointInsideCampus error:', err);
+    return false;
+  }
+}
+
+/**
+ * Tests whether a closed polygon ring (or array of rings) is wholly contained
+ * within the campus Polygon or MultiPolygon geometry.
+ *
+ * Uses polygon difference: (polygon - campus) must have zero remainder area.
+ * Catches polygons that cross outside concave campus boundaries even if all vertices are inside.
+ */
+export function isPolygonContainedInCampus(
+  polygon: number[][] | number[][][],
+  campusGeometry: any
+): boolean {
+  if (!polygon || !Array.isArray(polygon) || polygon.length === 0) {
+    return false;
+  }
+  if (!campusGeometry || !campusGeometry.type || !campusGeometry.coordinates) {
+    return false;
+  }
+  if (campusGeometry.type !== 'Polygon' && campusGeometry.type !== 'MultiPolygon') {
+    return false;
+  }
+
+  try {
+    // Normalize input to Pair[][] (Polygon)
+    let polyRings: any;
+    if (typeof polygon[0][0] === 'number') {
+      // Single ring number[][]
+      const closed = closePolygonRing(polygon as number[][]);
+      polyRings = [closed];
+    } else {
+      // Array of rings number[][][]
+      polyRings = (polygon as number[][][]).map((r) => closePolygonRing(r));
+    }
+
+    const diff = polygonClipping.difference(polyRings, campusGeometry.coordinates);
+    if (!diff || diff.length === 0) {
+      return true;
+    }
+
+    // Check if remaining diff area is trivial (floating-point precision threshold)
+    const remainderArea = calculateGeometryAreaM2({
+      type: 'MultiPolygon',
+      coordinates: diff,
+    });
+    return remainderArea <= 0.05; // Less than 0.05 m² remainder considered numerical noise
+  } catch (err) {
+    console.warn('[geoUtils] isPolygonContainedInCampus error:', err);
+    return false;
+  }
+}
+
+/**
+ * Calculates the solid outside mask covering the viewport minus the campus geometry:
+ * outside mask = visible viewport geometry - campus geometry
+ *
+ * Returns a GeoJSON MultiPolygon feature geometry, or null if campus geometry is invalid.
+ */
+export function computeCampusMaskGeometry(
+  viewportBbox: [number, number, number, number], // [west, south, east, north]
+  campusGeometry: any
+): { type: 'MultiPolygon'; coordinates: number[][][][] } | null {
+  if (!campusGeometry || !campusGeometry.type || !campusGeometry.coordinates) {
+    return null;
+  }
+  if (campusGeometry.type !== 'Polygon' && campusGeometry.type !== 'MultiPolygon') {
+    return null;
+  }
+
+  const [west, south, east, north] = viewportBbox;
+  const viewportRing: [number, number][] = [
+    [west, south],
+    [east, south],
+    [east, north],
+    [west, north],
+    [west, south],
+  ];
+
+  try {
+    const diff = polygonClipping.difference([viewportRing], campusGeometry.coordinates);
+    return {
+      type: 'MultiPolygon',
+      coordinates: diff as number[][][][],
+    };
+  } catch (err) {
+    console.warn('[geoUtils] computeCampusMaskGeometry error:', err);
+    return null;
+  }
+}
+

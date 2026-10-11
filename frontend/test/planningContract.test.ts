@@ -101,6 +101,12 @@ const mockLocations: CampusLocation[] = [
   },
 ];
 
+const mockEntryGate = {
+  id: 'entry-gate',
+  name: 'Main Gate',
+  coordinates: [77.188, 28.542] as [number, number],
+};
+
 async function runPlanningContractTests() {
   console.log('Running frontend planning pipeline contract tests...');
 
@@ -288,6 +294,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(fetchCallCount === 1, 'Clicking Plan must dispatch exactly one network request');
@@ -296,6 +303,8 @@ async function runPlanningContractTests() {
   assert(capturedBody.fest_name === 'Rendezvous', 'Payload must include fest_name');
   assert(capturedBody.campus_state === 'Delhi', 'Payload must include campus_state');
   assert(capturedBody.campus_boundary !== null, 'Payload must include campus_boundary');
+  assert(capturedBody.entry_gate !== undefined, 'Payload must include entry_gate');
+  assert(capturedBody.entry_gate.id === 'entry-gate', 'Payload entry_gate id must match');
   assert(capturedBody.locations.length === 2, 'Payload must include active locations');
   assert(capturedBody.locations[0].id === 'loc-oat', 'Payload must preserve stable location ID');
 
@@ -333,6 +342,7 @@ async function runPlanningContractTests() {
       campus: mockCampus,
       eventDetails: mockEvent,
       locations: duplicateLocations,
+      entryGate: mockEntryGate,
     });
   } catch (err: any) {
     threwDuplicate = true;
@@ -349,6 +359,7 @@ async function runPlanningContractTests() {
       campus: { ...mockCampus, state: '   ' },
       eventDetails: mockEvent,
       locations: mockLocations,
+      entryGate: mockEntryGate,
     });
   } catch (err: any) {
     threwEmptyState = true;
@@ -410,6 +421,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(routeFailedResult.prediction !== null, 'Prediction must be preserved when routes fail');
@@ -474,6 +486,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(binFailedResult.binRecommendations !== null, 'Bin recommendations object must be returned even when failed');
@@ -590,6 +603,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(roadBinPlanResult.roadBinRecommendations !== null, 'roadBinRecommendations must be present');
@@ -656,6 +670,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(emptyRoadBinResult.roadBinRecommendations !== null, 'Empty road-bin result must still be an object, not null');
@@ -693,6 +708,7 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
   });
 
   assert(missingRoadBinResult.roadBinRecommendations === null, 'Missing road-bin response must map to null (unavailable)');
@@ -756,10 +772,33 @@ async function runPlanningContractTests() {
     campus: mockCampus,
     eventDetails: mockEvent,
     locations: mockLocations,
+    entryGate: mockEntryGate,
     alternativePathToleranceM: 12.0,
     maxPathsPerPair: 10,
     alternativePathDecayLambdaM: 6.0,
   });
+
+  assert(capturedPayload?.routing_config?.alternative_path_tolerance_m === 12.0, 'alternative_path_tolerance_m sent in payload');
+  assert(capturedPayload?.routing_config?.max_paths_per_pair === 10, 'max_paths_per_pair sent in payload');
+  assert(capturedPayload?.routing_config?.alternative_path_decay_lambda_m === 6.0, 'alternative_path_decay_lambda_m sent in payload');
+  assert(altRoutesResult.routeResult?.diagnostics?.scoring?.total_paths_evaluated === 4, 'total_paths_evaluated mapped in routeResult diagnostics');
+
+  // ---------------------------------------------------------------------------
+  // Test 10: Missing entry gate client-side rejection
+  // ---------------------------------------------------------------------------
+  let threwMissingGate = false;
+  try {
+    await requestCampusPlan({
+      campus: mockCampus,
+      eventDetails: mockEvent,
+      locations: mockLocations,
+      entryGate: null as any,
+    });
+  } catch (err: any) {
+    threwMissingGate = true;
+    assert(err.message.includes('entry gate'), 'Missing entry gate rejected pre-flight');
+  }
+  assert(threwMissingGate, 'Should throw error when entry gate is missing');
 
   assert(capturedPayload?.routing_config?.alternative_path_tolerance_m === 12.0, 'alternative_path_tolerance_m sent in payload');
   assert(capturedPayload?.routing_config?.max_paths_per_pair === 10, 'max_paths_per_pair sent in payload');

@@ -48,6 +48,22 @@ class LocationPlanRequest(BaseModel):
         return None
 
 
+class EntryGatePlanRequest(BaseModel):
+    """Mandatory entry gate routing endpoint."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(default="entry-gate", min_length=1, description="Stable unique identifier for the gate.")
+    name: str = Field(default="Entry Gate", min_length=1, description="Entry gate label.")
+    coordinates: list[float] = Field(..., description="[longitude, latitude] in WGS84 coordinates.")
+
+    @field_validator("coordinates")
+    @classmethod
+    def validate_coords(cls, v: list[float]) -> list[float]:
+        _validate_coordinate_pair(v, "coordinates")
+        return [float(v[0]), float(v[1])]
+
+
 class CampusPlanRequest(BaseModel):
     """Unified campus event planning request."""
 
@@ -68,6 +84,10 @@ class CampusPlanRequest(BaseModel):
     campus_boundary: Optional[dict[str, Any]] = Field(
         default=None,
         description="Campus boundary GeoJSON (Polygon or MultiPolygon) for pedestrian routing.",
+    )
+    entry_gate: EntryGatePlanRequest = Field(
+        ...,
+        description="Mandatory campus entry gate placed inside the campus boundary.",
     )
     locations: list[LocationPlanRequest] = Field(
         ..., min_length=1, description="Map-selected event activity locations."
@@ -104,6 +124,23 @@ class CampusPlanRequest(BaseModel):
                 f"Duplicate location names detected: {sorted(set(dup_names))}. "
                 "Location names must be unique for spatial bin distribution modeling."
             )
+
+        # Validate that entry_gate is inside campus_boundary when boundary is provided
+        if self.campus_boundary is not None:
+            try:
+                from shapely.geometry import Point, shape
+
+                boundary_shape = shape(self.campus_boundary)
+                gate_pt = Point(self.entry_gate.coordinates[0], self.entry_gate.coordinates[1])
+                if not (boundary_shape.intersects(gate_pt) or boundary_shape.contains(gate_pt)):
+                    raise ValueError(
+                        f"Entry gate coordinates {self.entry_gate.coordinates} must be located inside the campus boundary."
+                    )
+            except ValueError:
+                raise
+            except Exception as e:
+                raise ValueError(f"Invalid campus boundary geometry: {e}")
+
         return self
 
 
