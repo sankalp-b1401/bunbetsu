@@ -202,94 +202,106 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </div>
 
         <div className="flex flex-col gap-1.5 my-auto py-1">
-          {/* Top 2 Tiles: Physical Bins & Required Emptying Turns */}
-          <div className="grid grid-cols-2 gap-1.5">
-            {/* Tile 1: Physical Bins */}
-            <div className="p-2 bg-emerald-50/50 rounded-xl border border-emerald-200/70 space-y-0.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1 text-emerald-800">
-                  <Trash2 className="w-3 h-3 shrink-0 text-[#004B20]" />
-                  <span className="text-[11px] font-bold">Physical Bins</span>
+          {/* 2x2 Grid matching the wireframe */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Tile 1: Total Bins */}
+            <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-emerald-800">
+                  <Trash2 className="w-3.5 h-3.5 shrink-0 text-[#004B20]" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                    Total Bins
+                  </span>
                 </div>
-                <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100/70 px-1 py-0.2 rounded border border-emerald-300/60">
-                  25 m spacing
-                </span>
+                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+                  25 m perimeter spacing
+                </p>
               </div>
-              <div className="flex items-baseline justify-between pt-0.5">
-                <span className="font-heading text-lg sm:text-xl font-black text-[#202820]">
+              <div className="flex items-baseline gap-1.5 pt-1.5">
+                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
                   {locPhysicalBins}
                 </span>
-                <span className="text-[9.5px] text-[#667267] font-medium">placement bins</span>
+                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+                  bins
+                </span>
               </div>
             </div>
 
             {/* Tile 2: Required Emptying Turns (Location Specific Only) */}
-            <div className="p-2 bg-blue-50/50 rounded-xl border border-blue-200/70 space-y-0.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1 text-blue-800">
-                  <RotateCw className="w-3 h-3 shrink-0 text-blue-700" />
-                  <span className="text-[11px] font-bold">Emptying Turns</span>
+            <div className="p-2 sm:p-2.5 bg-blue-50/50 rounded-xl border border-blue-200/70 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-blue-800">
+                  <RotateCw className="w-3.5 h-3.5 shrink-0 text-blue-700" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                    Emptying Turns
+                  </span>
                 </div>
-                <span className="text-[9px] font-bold text-blue-800 bg-blue-100/70 px-1 py-0.2 rounded border border-blue-300/60">
-                  Location
-                </span>
+                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+                  {locTurnsLow !== undefined && locTurnsHigh !== undefined && locTurnsLow !== locTurnsHigh
+                    ? `Range: ${locTurnsLow}–${locTurnsHigh}×/day`
+                    : 'Required turns'}
+                </p>
               </div>
-              <div className="flex items-baseline justify-between pt-0.5">
-                <span className="font-heading text-lg sm:text-xl font-black text-[#202820]">
+              <div className="flex items-baseline gap-1.5 pt-1.5">
+                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
                   {locEmptyingTurns !== undefined ? `${locEmptyingTurns}×` : '—'}
                 </span>
-                <span className="text-[9.5px] text-[#667267] font-medium">turns / bin / day</span>
+                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+                  turns / day
+                </span>
               </div>
-              {locTurnsLow !== undefined && locTurnsHigh !== undefined && locTurnsLow !== locTurnsHigh && (
-                <div className="text-[9px] text-[#667267]">
-                  Range: {locTurnsLow}–{locTurnsHigh}× turns/day
+            </div>
+
+            {/* Tile 3: Recyclable */}
+            <div className="p-2 sm:p-2.5 bg-[#F0FDF4] rounded-xl border border-emerald-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-emerald-900">
+                  <Recycle className="w-3.5 h-3.5 text-emerald-700" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                    Recyclable
+                  </span>
                 </div>
-              )}
+                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+                  {selectedLocation.recyclable?.required_turns
+                    ? `${selectedLocation.recyclable.required_turns}× turns/day`
+                    : 'Recyclable stream'}
+                </p>
+              </div>
+              <div className="flex items-baseline gap-1.5 pt-1.5">
+                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
+                  {locRecyclableBins !== undefined ? locRecyclableBins : '—'}
+                </span>
+                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+                  bins
+                </span>
+              </div>
+            </div>
+
+            {/* Tile 4: Disposable */}
+            <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-blue-900">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                    Disposable
+                  </span>
+                </div>
+                <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+                  {selectedLocation.disposable?.required_turns
+                    ? `${selectedLocation.disposable.required_turns}× turns/day`
+                    : 'Disposable stream'}
+                </p>
+              </div>
+              <div className="flex items-baseline gap-1.5 pt-1.5">
+                <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
+                  {locDisposableBins !== undefined ? locDisposableBins : '—'}
+                </span>
+                <span className="text-[10px] sm:text-[10.5px] text-[#667267] font-medium">
+                  bins
+                </span>
+              </div>
             </div>
           </div>
-
-          {/* Stream Breakdown 2-Column Card */}
-          {hasStreamBreakdown ? (
-            <div className="grid grid-cols-2 gap-1.5 p-2 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE]">
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-1 text-[11px] font-bold text-blue-900">
-                  <span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />
-                  <span>Disposable</span>
-                </div>
-                <div className="flex items-baseline justify-between pt-0.5">
-                  <span className="text-sm font-black text-[#202820]">
-                    {locDisposableBins !== undefined ? `${locDisposableBins} bins` : '—'}
-                  </span>
-                  <span className="text-[9.5px] text-[#667267] font-medium">
-                    {selectedLocation.disposable?.required_turns
-                      ? `${selectedLocation.disposable.required_turns}×/day`
-                      : '—'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-0.5 border-l border-[#E1E8DE] pl-2">
-                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-900">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
-                  <span>Recyclable</span>
-                </div>
-                <div className="flex items-baseline justify-between pt-0.5">
-                  <span className="text-sm font-black text-[#202820]">
-                    {locRecyclableBins !== undefined ? `${locRecyclableBins} bins` : '—'}
-                  </span>
-                  <span className="text-[9.5px] text-[#667267] font-medium">
-                    {selectedLocation.recyclable?.required_turns
-                      ? `${selectedLocation.recyclable.required_turns}×/day`
-                      : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-2 bg-[#F7F9F5] rounded-xl border border-[#E1E8DE] text-center text-[10px] text-[#667267]">
-              Stream breakdown unavailable for this location.
-            </div>
-          )}
 
           {/* Shortfall or Capacity Warnings */}
           {selectedLocation.capacity_shortfall_litres > 0 && (
@@ -330,20 +342,22 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
       {renderHeader()}
 
-      {/* 2x2 Event-Level Grid */}
+      {/* 2x2 Event-Level Grid matching wireframe */}
       <div className="grid grid-cols-2 gap-2 my-auto py-1">
-        {/* Tile 1: On-site bins */}
-        <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 space-y-1">
-          <div className="flex items-center justify-between">
+        {/* Tile 1: Total Bins */}
+        <div className="p-2 sm:p-2.5 bg-emerald-50/50 rounded-xl border border-emerald-200/70 flex flex-col justify-between">
+          <div>
             <div className="flex items-center gap-1.5 text-emerald-800">
               <Trash2 className="w-3.5 h-3.5 shrink-0 text-[#004B20]" />
-              <span className="text-xs font-bold">On-site bins</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                Total Bins
+              </span>
             </div>
-            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/60">
-              Perimeter
-            </span>
+            <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+              25 m perimeter spacing
+            </p>
           </div>
-          <div className="flex items-baseline justify-between pt-0.5">
+          <div className="flex items-baseline gap-1.5 pt-1.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
               {totalOnSiteBins}
             </span>
@@ -354,19 +368,21 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </div>
 
         {/* Tile 2: Road bins */}
-        <div className="p-2 sm:p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-1">
-          <div className="flex items-center justify-between">
+        <div className="p-2 sm:p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-col justify-between">
+          <div>
             <div className="flex items-center gap-1.5 text-amber-900">
               <span className="w-4 h-4 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px] font-bold">
                 🚏
               </span>
-              <span className="text-xs font-bold">Road bins</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                Road bins
+              </span>
             </div>
-            <span className="text-[9px] font-bold text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded border border-amber-300/60">
-              Dual-stream
-            </span>
+            <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+              Dual-stream placement
+            </p>
           </div>
-          <div className="flex items-baseline justify-between pt-0.5">
+          <div className="flex items-baseline gap-1.5 pt-1.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
               {totalRoadBins}
             </span>
@@ -377,17 +393,19 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </div>
 
         {/* Tile 3: Recyclable bins */}
-        <div className="p-2 sm:p-2.5 bg-[#F0FDF4] rounded-xl border border-emerald-200/80 space-y-1">
-          <div className="flex items-center justify-between">
+        <div className="p-2 sm:p-2.5 bg-[#F0FDF4] rounded-xl border border-emerald-200/80 flex flex-col justify-between">
+          <div>
             <div className="flex items-center gap-1.5 text-emerald-900">
               <Recycle className="w-3.5 h-3.5 text-emerald-700" />
-              <span className="text-xs font-bold">Recyclable</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                Recyclable
+              </span>
             </div>
-            <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-300/60">
-              Stream
-            </span>
+            <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+              On-site recyclable stream
+            </p>
           </div>
-          <div className="flex items-baseline justify-between pt-0.5">
+          <div className="flex items-baseline gap-1.5 pt-1.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
               {recyclableBins}
             </span>
@@ -398,17 +416,19 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         </div>
 
         {/* Tile 4: Disposable bins */}
-        <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 space-y-1">
-          <div className="flex items-center justify-between">
+        <div className="p-2 sm:p-2.5 bg-[#EFF6FF] rounded-xl border border-blue-200/80 flex flex-col justify-between">
+          <div>
             <div className="flex items-center gap-1.5 text-blue-900">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />
-              <span className="text-xs font-bold">Disposable</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#202820]">
+                Disposable
+              </span>
             </div>
-            <span className="text-[9px] font-bold text-blue-800 bg-blue-100/70 px-1.5 py-0.5 rounded border border-blue-300/60">
-              Stream
-            </span>
+            <p className="text-[10px] text-[#667267] font-medium mt-0.5">
+              On-site disposable stream
+            </p>
           </div>
-          <div className="flex items-baseline justify-between pt-0.5">
+          <div className="flex items-baseline gap-1.5 pt-1.5">
             <span className="font-heading text-xl sm:text-2xl font-black text-[#202820]">
               {disposableBins}
             </span>
