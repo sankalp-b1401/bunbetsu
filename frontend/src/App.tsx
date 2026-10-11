@@ -52,8 +52,34 @@ import { SavePlanModal } from './components/Step3Plan/SavePlanModal';
 export default function App() {
   // Top-level navigation: 'landing' | 'auth' | 'dashboard' | 'planner'
   const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'dashboard' | 'planner'>('landing');
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+    if (path === '/guest') {
+      return {
+        name: 'Guest User',
+        email: 'guest@bunbetsu.app',
+        role: 'Guest Planner',
+        isGuest: true,
+      };
+    }
+    return null;
+  });
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
+
+  // Client-side URL path synchronization helper
+  const navigate = useCallback((targetPath: string, replace = false) => {
+    if (typeof window === 'undefined') return;
+    const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    const normalizedTarget = targetPath.toLowerCase().replace(/\/+$/, '') || '/';
+    if (currentPath !== normalizedTarget) {
+      if (replace) {
+        window.history.replaceState(null, '', targetPath);
+      } else {
+        window.history.pushState(null, '', targetPath);
+      }
+    }
+  }, []);
 
   // Saved templates state
   const [savedTemplates, setSavedTemplates] = useState<DashboardTemplateItem[]>([]);
@@ -122,7 +148,17 @@ export default function App() {
           if (!isMounted) return;
           if (authUser) {
             setUser(authUser);
-            setCurrentView((prev) => (prev === 'auth' ? 'dashboard' : prev));
+            const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+            if (path === '/dashboard' || path === '/auth' || path === '/login' || path === '' || path === '/') {
+              navigate('/dashboard', true);
+              setCurrentView('dashboard');
+            } else if (path === '/guest' || path === '/planner') {
+              // Preserve active planner view
+            } else if (path === '/home') {
+              // Explicitly requested landing page
+            } else {
+              setCurrentView((prev) => (prev === 'auth' ? 'dashboard' : prev));
+            }
           }
         } catch (err) {
           console.error('[Bunbetsu Auth] Profile resolution error:', err);
@@ -135,6 +171,13 @@ export default function App() {
     };
 
     if (!isSupabaseConfigured) {
+      const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      if (path === '/dashboard') {
+        navigate('/auth', true);
+        setCurrentView('auth');
+      } else if (path === '' || path === '/') {
+        navigate('/home', true);
+      }
       setIsAuthInitializing(false);
       return;
     }
@@ -147,6 +190,7 @@ export default function App() {
 
       if (event === 'SIGNED_OUT') {
         setUser((currentUser) => (currentUser?.isGuest ? currentUser : null));
+        navigate('/home', true);
         setCurrentView((prev) => (prev === 'dashboard' ? 'auth' : prev));
         setIsAuthInitializing(false);
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
@@ -158,6 +202,13 @@ export default function App() {
         if (session?.user) {
           scheduleProfileResolution(session.user);
         } else {
+          const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+          if (path === '/dashboard') {
+            navigate('/auth', true);
+            setCurrentView('auth');
+          } else if (path === '' || path === '/') {
+            navigate('/home', true);
+          }
           setIsAuthInitializing(false);
         }
       }
@@ -172,6 +223,13 @@ export default function App() {
           if (session?.user) {
             scheduleProfileResolution(session.user);
           } else {
+            const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+            if (path === '/dashboard') {
+              navigate('/auth', true);
+              setCurrentView('auth');
+            } else if (path === '' || path === '/') {
+              navigate('/home', true);
+            }
             setIsAuthInitializing(false);
           }
         }
@@ -187,7 +245,65 @@ export default function App() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [navigate]);
+
+  // Initial path synchronization
+  useEffect(() => {
+    const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+    if (path === '/guest') {
+      setCurrentStep(1);
+      setCurrentView('planner');
+    } else if (path === '/auth' || path === '/login') {
+      setCurrentView('auth');
+    } else if (path === '/planner') {
+      setCurrentView('planner');
+    } else if (path === '' || path === '/') {
+      navigate('/home', true);
+      setCurrentView('landing');
+    } else if (path === '/home') {
+      setCurrentView('landing');
+    }
+  }, [navigate]);
+
+  // Handle browser back and forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      if (path === '/guest') {
+        setUser((prev) =>
+          prev && !prev.isGuest
+            ? prev
+            : {
+                name: 'Guest User',
+                email: 'guest@bunbetsu.app',
+                role: 'Guest Planner',
+                isGuest: true,
+              }
+        );
+        setCurrentStep(1);
+        setCurrentView('planner');
+      } else if (path === '/dashboard') {
+        if (user && !user.isGuest) {
+          setCurrentView('dashboard');
+        } else {
+          navigate('/auth', true);
+          setCurrentView('auth');
+        }
+      } else if (path === '/auth' || path === '/login') {
+        setCurrentView('auth');
+      } else if (path === '/planner') {
+        setCurrentView('planner');
+      } else {
+        setCurrentView('landing');
+        if (path !== '/home') {
+          navigate('/home', true);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user, navigate]);
 
   // Campus selection change handler: clears prior planning outputs and entry gate
   const handleSelectCampus = (newCampus: Campus) => {
@@ -530,10 +646,12 @@ export default function App() {
   const handleLoginSuccess = (userData: AuthUser) => {
     const authedUser: AuthUser = { ...userData, isGuest: false };
     setUser(authedUser);
+    navigate('/dashboard');
     setCurrentView('dashboard');
   };
 
   const handleSignIn = () => {
+    navigate('/auth');
     setCurrentView('auth');
   };
 
@@ -570,6 +688,7 @@ export default function App() {
     setHistoricalEventName(undefined);
     setHistoricalCreatedAt(undefined);
     setHasSavedHistory(false);
+    navigate('/guest');
     setCurrentView('planner');
   };
 
@@ -591,6 +710,7 @@ export default function App() {
     setHistoricalEventName(undefined);
     setHistoricalCreatedAt(undefined);
     setHasSavedHistory(false);
+    navigate(user?.isGuest ? '/guest' : '/planner');
     setCurrentView('planner');
   };
 
@@ -701,6 +821,7 @@ export default function App() {
     // 6. Navigate to Step 2: Event Configuration in Planner
     setStep1Completed(true);
     setCurrentStep(2);
+    navigate('/planner');
     setCurrentView('planner');
     setIsHistoricalView(false);
     setHistoricalEventName(undefined);
@@ -858,6 +979,7 @@ export default function App() {
     // 7. Navigate directly to Step 3: Plan Dashboard
     setStep1Completed(true);
     setCurrentStep(3);
+    navigate('/planner');
     setCurrentView('planner');
 
     setToastMessage(`Loaded historical plan: "${eventItem.name}"`);
@@ -866,6 +988,7 @@ export default function App() {
 
   const handleExitHistoricalView = () => {
     setIsHistoricalView(false);
+    navigate('/dashboard');
     setCurrentView('dashboard');
   };
 
@@ -880,6 +1003,7 @@ export default function App() {
       setUser(null);
       setSavedTemplates([]);
       setRecentEvents([]);
+      navigate('/home');
       setCurrentView('landing');
       setCurrentStep(1);
       setSelectedCampus(null);
@@ -924,7 +1048,10 @@ export default function App() {
       <AuthPage
         onLoginSuccess={handleLoginSuccess}
         onContinueAsGuest={handleContinueAsGuest}
-        onBackToLanding={() => setCurrentView('landing')}
+        onBackToLanding={() => {
+          navigate('/home');
+          setCurrentView('landing');
+        }}
       />
     );
   }
@@ -978,6 +1105,7 @@ export default function App() {
         onLogout={handleLogout}
         onGoToDashboard={user?.isGuest ? undefined : () => {
           setIsHistoricalView(false);
+          navigate('/dashboard');
           setCurrentView('dashboard');
         }}
         isHistoricalView={isHistoricalView}

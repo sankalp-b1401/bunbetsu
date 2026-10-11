@@ -70,48 +70,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#F7F9F5] text-[#202820] font-sans">
-      {/* Top Header */}
-      <header className="sticky top-0 z-40 w-full border-b border-[#E1E8DE]/80 bg-[#F7F9F5]/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 sm:px-8 lg:px-10">
-          <div className="flex items-center gap-8">
-            <img
-              src="/bunbetsu-logo.png"
-              alt="Bunbetsu"
-              className="h-7 w-auto object-contain cursor-pointer"
-              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            />
-            <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-[#667267]">
-              <a href="#how-it-works" className="transition hover:text-[#004B20]">
-                How it works
-              </a>
-              <a href="#capabilities" className="transition hover:text-[#004B20]">
-                Capabilities
-              </a>
-              <a href="#methodology" className="transition hover:text-[#004B20]">
-                Methodology
-              </a>
-            </nav>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onSignIn}
-              className="rounded-lg px-3.5 py-2 text-xs font-bold text-[#004B20] transition hover:bg-[#EAF5E6] cursor-pointer"
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={handleTryNow}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#004B20] px-4 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-[#003818] cursor-pointer"
-            >
-              Try now
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
-
       <main>
         <section className="relative overflow-hidden bg-[#F7F9F5]">
           <div
@@ -178,11 +136,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               plan.
             </p>
           </div>
-          <div className="mt-10 grid gap-3 md:grid-cols-3">
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
             {workflow.map((step, index) => (
               <div
                 key={step.number}
-                className="relative border-t-2 border-[#70D000] bg-white p-5 shadow-sm md:min-h-[190px]"
+                className="relative rounded-2xl border border-[#E1E8DE] border-t-2 border-t-[#70D000] bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md md:min-h-[190px]"
               >
                 {index < workflow.length - 1 && (
                   <ChevronRight
@@ -227,7 +185,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               {capabilities.map(({ icon: Icon, title, description, tone }) => (
                 <article
                   key={title}
-                  className="border border-[#E1E8DE] bg-[#F7F9F5] p-5 transition hover:-translate-y-1 hover:shadow-md"
+                  className="rounded-2xl border border-[#E1E8DE] bg-[#F7F9F5] p-5 transition hover:-translate-y-1 hover:shadow-md"
                 >
                   <div
                     className={`mb-7 flex h-10 w-10 items-center justify-center rounded-lg ${tone}`}
@@ -262,8 +220,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               festival-specific data is still limited.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="border border-[#E1E8DE] bg-white p-5 shadow-sm">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[#E1E8DE] bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
               <ShieldCheck className="h-5 w-5 text-[#004B20]" />
               <h3 className="mt-4 font-heading text-base font-bold">
                 CPCB reference baselines
@@ -273,7 +231,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 starting point.
               </p>
             </div>
-            <div className="border border-[#E1E8DE] bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[#E1E8DE] bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
               <BarChart3 className="h-5 w-5 text-[#E66D27]" />
               <h3 className="mt-4 font-heading text-base font-bold">
                 Low / central / high
@@ -283,7 +241,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 precision.
               </p>
             </div>
-            <div className="border border-[#E1E8DE] bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[#E1E8DE] bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
               <GitBranch className="h-5 w-5 text-[#2365A6]" />
               <h3 className="mt-4 font-heading text-base font-bold">
                 Mapped movement
@@ -293,7 +251,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 pedestrian graph.
               </p>
             </div>
-            <div className="border border-[#E1E8DE] bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[#E1E8DE] bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
               <Leaf className="h-5 w-5 text-[#004B20]" />
               <h3 className="mt-4 font-heading text-base font-bold">
                 Improve with use
@@ -302,43 +260,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 Actual event data can calibrate future campus-specific
                 predictions.
               </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-5 mb-16 overflow-hidden rounded-2xl bg-[#004B20] sm:mx-8 lg:mx-auto lg:mb-24 lg:max-w-7xl lg:px-10">
-          <div className="relative px-6 py-12 sm:px-10 lg:flex lg:items-center lg:justify-between lg:gap-12 lg:py-16">
-            <div
-              className="absolute -right-20 -top-28 h-72 w-72 rounded-full border-[28px] border-[#70D000]/20"
-              aria-hidden="true"
-            />
-            <div className="relative max-w-2xl">
-              <div className="mb-3 text-[10px] font-extrabold uppercase tracking-[.16em] text-[#B9E769]">
-                Make the first move count
-              </div>
-              <h2 className="font-heading text-3xl font-extrabold tracking-[-.035em] text-white sm:text-4xl">
-                Give your next festival a plan before it gets crowded.
-              </h2>
-              <p className="mt-4 text-sm leading-7 text-[#D6EAD3]">
-                Start with a campus, shape the event, and see where waste
-                infrastructure belongs.
-              </p>
-            </div>
-            <div className="relative mt-8 flex flex-wrap items-center gap-3 shrink-0 lg:mt-0">
-              <button
-                type="button"
-                onClick={handleTryNow}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#70D000] px-5 py-3 text-sm font-extrabold text-[#004B20] transition hover:bg-[#8BE51E] focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#004B20] cursor-pointer"
-              >
-                Try now <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                onClick={onSignIn}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border-2 border-white/80 bg-transparent px-5 py-3 text-sm font-extrabold text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#004B20] cursor-pointer"
-              >
-                Sign in
-              </button>
             </div>
           </div>
         </section>

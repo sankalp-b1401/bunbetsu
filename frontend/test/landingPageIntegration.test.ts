@@ -119,9 +119,36 @@ async function runLandingPageIntegrationTests() {
     'handleLogout must return user to landing page'
   );
 
-  console.log('✓ App.tsx routing and navigation integration assertions passed');
+  // 3. Path Routing Contract Tests
+  console.log('3. Testing path routing contracts (/home, /guest, /dashboard)...');
 
-  // 3. AuthPage integration check
+  // Requirement 1: landing should be frontend_url/home
+  assert.ok(
+    appContent.includes("navigate('/home'"),
+    'Landing page must navigate to /home'
+  );
+
+  // Requirement 2: try now should be frontend_url/guest
+  assert.ok(
+    appContent.includes("navigate('/guest')"),
+    'Try now flow must navigate to /guest'
+  );
+
+  // Requirement 3: logged in should be frontend_url/dashboard
+  assert.ok(
+    appContent.includes("navigate('/dashboard'"),
+    'Logged in flow must navigate to /dashboard'
+  );
+
+  // Popstate history listener for back/forward navigation
+  assert.ok(
+    appContent.includes("window.addEventListener('popstate'"),
+    'App.tsx must listen to popstate for browser navigation'
+  );
+
+  console.log('✓ Path routing contracts (/home, /guest, /dashboard, popstate) verified');
+
+  // 4. AuthPage integration check
   const authPagePath = path.join(__dirname, '../src/components/Auth/AuthPage.tsx');
   const authPageContent = fs.readFileSync(authPagePath, 'utf-8');
   assert.ok(
@@ -131,7 +158,7 @@ async function runLandingPageIntegrationTests() {
 
   console.log('✓ AuthPage navigation integration assertions passed');
 
-  console.log('All Landing Page integration assertions passed successfully!');
+  console.log('All Landing Page and Path Routing integration assertions passed successfully!');
 }
 
 runLandingPageIntegrationTests().catch((err) => {
