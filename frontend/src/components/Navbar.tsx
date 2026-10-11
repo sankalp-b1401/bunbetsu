@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, History, Users, X, Calendar, Download, Trophy, Sparkles, MessageSquare, ArrowRight, LayoutTemplate } from 'lucide-react';
+import { Check, History, X, ArrowRight, LayoutTemplate } from 'lucide-react';
 
 interface NavbarProps {
   currentStep: 1 | 2 | 3;
@@ -17,7 +17,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onResetPlan,
 }) => {
   const [showEventHistory, setShowEventHistory] = useState(false);
-  const [showCommunity, setShowCommunity] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
   return (
@@ -136,16 +135,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <History className="w-3.5 h-3.5 text-[#667267]" />
               <span>Event History</span>
-            </button>
-
-            {/* Community Button */}
-            <button
-              type="button"
-              onClick={() => setShowCommunity(true)}
-              className="text-xs font-semibold text-[#667267] hover:text-[#202820] transition-colors hidden sm:flex items-center gap-1.5 cursor-pointer px-2.5 py-1 rounded-md hover:bg-[#F4F6F2]"
-            >
-              <Users className="w-3.5 h-3.5 text-[#667267]" />
-              <span>Community</span>
             </button>
 
             {/* Templates Button with Icon */}
@@ -283,98 +272,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      {/* COMMUNITY MODAL */}
-      {showCommunity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-lg shadow-2xl border border-[#E1E8DE] w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="px-5 py-4 bg-[#F7F9F5] border-b border-[#E1E8DE] flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-md bg-[#004B20] text-white flex items-center justify-center">
-                  <Users className="w-4 h-4 text-[#70D000]" />
-                </div>
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-[#202820]">Campus Sustainability Community</h3>
-                  <p className="text-[11px] text-[#667267] font-medium">
-                    Green team networks, vendor benchmarks, and student volunteer hubs
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCommunity(false)}
-                className="p-1.5 text-[#667267] hover:text-[#202820] hover:bg-white rounded-md cursor-pointer transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="p-5 overflow-y-auto space-y-4">
-              {/* Leaderboard snippet */}
-              <div className="p-3.5 bg-[#EAF5E6] rounded-md border border-[#70D000]/40 flex items-start gap-3">
-                <Trophy className="w-4 h-4 text-[#004B20] shrink-0 mt-0.5" />
-                <div className="space-y-0.5 text-xs">
-                  <div className="font-bold text-[#004B20] font-heading">
-                    Campus Zero-Waste Index: Rank #4 in North Zone
-                  </div>
-                  <p className="text-[11px] text-[#202820] leading-relaxed">
-                    Institutes participating in Bunbetsu shared waste audits diverted 18.4 tonnes of organic compost and recyclables during fest season 2024.
-                  </p>
-                </div>
-              </div>
-
-              {/* Community features */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 bg-[#F7F9F5] rounded-md border border-[#E1E8DE] space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-[#004B20]" />
-                    <span className="font-heading text-xs font-bold text-[#202820]">Student Green Corps</span>
-                  </div>
-                  <p className="text-[11px] text-[#667267] leading-relaxed">
-                    48 student coordinators active across campus. Schedule bin-monitoring volunteer shifts for upcoming fests.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => alert('Green Corps coordinator list copied to clipboard')}
-                    className="text-[10px] font-bold text-[#004B20] hover:underline cursor-pointer"
-                  >
-                    View volunteer roster →
-                  </button>
-                </div>
-
-                <div className="p-3.5 bg-[#F7F9F5] rounded-md border border-[#E1E8DE] space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-3.5 h-3.5 text-[#004B20]" />
-                    <span className="font-heading text-xs font-bold text-[#202820]">Aggregator Directory</span>
-                  </div>
-                  <p className="text-[11px] text-[#667267] leading-relaxed">
-                    Connect directly with verified local composters, PET recyclers, and municipal organic processing facilities.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => alert('Recycling vendor registry loaded')}
-                    className="text-[10px] font-bold text-[#004B20] hover:underline cursor-pointer"
-                  >
-                    Find local recyclers →
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-3 bg-[#F7F9F5] border-t border-[#E1E8DE] flex items-center justify-between text-xs">
-              <span className="text-[11px] text-[#667267]">
-                Connected to National Green Campus Network
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowCommunity(false)}
-                className="px-3.5 py-1.5 bg-[#004B20] text-white rounded-md font-bold text-xs hover:bg-[#003B19] transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* TEMPLATES MODAL */}
       {showTemplates && (
