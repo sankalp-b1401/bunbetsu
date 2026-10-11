@@ -175,7 +175,29 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     isolateToCampusRef.current = isolateToCampus;
   }, [isolateToCampus]);
 
-  const [gatePlacementNotice, setGatePlacementNotice] = useState<string | null>(null);
+  const [boundaryNotice, setBoundaryNotice] = useState<string | null>(null);
+  const boundaryNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showBoundaryNotice = useCallback((message: string) => {
+    if (boundaryNoticeTimerRef.current) {
+      clearTimeout(boundaryNoticeTimerRef.current);
+    }
+    setBoundaryNotice(message);
+    boundaryNoticeTimerRef.current = setTimeout(() => {
+      setBoundaryNotice(null);
+      boundaryNoticeTimerRef.current = null;
+    }, 3500);
+  }, []);
+
+  const showBoundaryNoticeRef = useRef(showBoundaryNotice);
+  useEffect(() => {
+    showBoundaryNoticeRef.current = showBoundaryNotice;
+  }, [showBoundaryNotice]);
+
+  useEffect(() => {
+    setBoundaryNotice(null);
+  }, [currentMode]);
+
   const maskAnimFrameRef = useRef<number | null>(null);
 
   const onDeleteAreaRef = useRef(onDeleteArea);
@@ -544,6 +566,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
     // Cleanup
     return () => {
+      if (boundaryNoticeTimerRef.current) {
+        clearTimeout(boundaryNoticeTimerRef.current);
+      }
       map.off("click", handleMapBackgroundClick);
       resizeObserver.disconnect();
       markersRef.current.forEach((m) => m.remove());
@@ -2082,6 +2107,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         // Reject vertex clicks outside campus boundary
         const campusGeom = campus?.geometry || campus?.boundaryGeometry;
         if (campusGeom && !isPointInsideCampus(point as [number, number], campusGeom)) {
+          showBoundaryNoticeRef.current("You cannot add points outside the map boundary.");
           return;
         }
 
@@ -2215,8 +2241,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
         const campusGeom = campus?.geometry || campus?.boundaryGeometry;
         if (!campusGeom || !isPointInsideCampus(coords, campusGeom)) {
-          setGatePlacementNotice("Entry gate marker must be placed inside the campus boundary.");
-          setTimeout(() => setGatePlacementNotice(null), 3500);
+          showBoundaryNoticeRef.current("Entry gate marker must be placed inside the campus boundary.");
           return;
         }
 
@@ -2227,7 +2252,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         };
 
         onSetEntryGateRef.current?.(newGate);
-        setGatePlacementNotice(null);
+        setBoundaryNotice(null);
         setCurrentMode("select");
       };
 
@@ -2515,31 +2540,23 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   }, [draftPoints, isDraftClosed]);
 
   const handleFinishDrawing = () => {
-    let closedCoords: number[][];
-    if (isDraftClosed) {
-      closedCoords = draftPoints;
-    } else {
-      if (draftPoints.length < 3) {
-        alert(
-          "Please click at least 3 points on the map to define a valid location polygon.",
-        );
-        return;
-      }
-      closedCoords = closePolygonRing(draftPoints);
+    if (!isDraftClosed) {
+      return;
     }
+    const closedCoords = draftPoints;
 
     const validation = validatePolygonRing(closedCoords);
     if (!validation.isValid) {
-      alert(
+      showBoundaryNoticeRef.current(
         validation.error ||
-          "The drawn polygon is invalid. Please redraw the location.",
+          "The drawn polygon is invalid. Please redraw the location."
       );
       return;
     }
 
     const campusGeom = campus?.geometry || campus?.boundaryGeometry;
     if (campusGeom && !isPolygonContainedInCampus(closedCoords, campusGeom)) {
-      alert(
+      showBoundaryNoticeRef.current(
         "The drawn area extends outside the campus boundary. The location must be wholly contained within the campus."
       );
       return;
@@ -2554,10 +2571,10 @@ export const CampusMap: React.FC<CampusMapProps> = ({
     setNewAreaActivities([]);
   };
 
-
   const handleCancelDrawing = () => {
     setDraftPoints([]);
     setIsDraftClosed(false);
+    setBoundaryNotice(null);
     setCurrentMode("select");
   };
 
@@ -2743,21 +2760,20 @@ export const CampusMap: React.FC<CampusMapProps> = ({
         </div>
       )}
 
-      {/* Gate Placement Outside Boundary Toast */}
-      {gatePlacementNotice && (
+      {/* Outside Boundary Toast */}
+      {boundaryNotice && (
         <div className="absolute top-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-2 rounded-lg shadow-md text-xs font-sans">
-          <span>{gatePlacementNotice}</span>
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>{boundaryNotice}</span>
           <button
             type="button"
-            onClick={() => setGatePlacementNotice(null)}
-            className="p-0.5 text-amber-700 hover:text-amber-900 cursor-pointer"
+            onClick={() => setBoundaryNotice(null)}
+            className="p-0.5 text-amber-700 hover:text-amber-900 cursor-pointer ml-1"
           >
             <X className="w-3 h-3" />
           </button>
         </div>
       )}
-
-
 
       {/* Drawing Active Banner */}
       {currentMode === "addArea" && (
@@ -2780,6 +2796,14 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                   <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                   <span>Finish</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={handleCancelDrawing}
+                  className="p-1 rounded text-neutral-500 hover:bg-neutral-100 cursor-pointer ml-1"
+                  title="Cancel drawing"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
             </>
           ) : (
@@ -2792,19 +2816,6 @@ export const CampusMap: React.FC<CampusMapProps> = ({
                     : "Click map to place the first boundary point"}
               </span>
               <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled={draftPoints.length < 3}
-                  onClick={handleFinishDrawing}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold cursor-pointer transition ${
-                    draftPoints.length >= 3
-                      ? "bg-[#155734] text-white hover:bg-[#114328]"
-                      : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
-                  }`}
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Finish ({draftPoints.length}/3+)</span>
-                </button>
                 <button
                   type="button"
                   onClick={handleCancelDrawing}

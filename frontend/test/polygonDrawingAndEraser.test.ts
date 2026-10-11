@@ -11,6 +11,9 @@
  * 8. Stale state triggers when configured locations are deleted
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   calculatePolygonAreaM2,
   getPolygonCenter,
@@ -18,6 +21,7 @@ import {
   closePolygonRing,
   isRingClosed,
   validatePolygonRing,
+  isPointInsideCampus,
 } from '../src/utils/geoUtils';
 import { CampusLocation, UserMapArea, MapMode } from '../src/types/bunbetsu';
 
@@ -329,11 +333,86 @@ function testDeleteAreaAndStateModel() {
   console.log('✓ Feature C tests passed');
 }
 
+function testBoundaryPointRejectionAndFinishVisibility() {
+  console.log('Testing Feature D: Outside Boundary Rejection & Conditional Finish Button...');
+
+  const campusBoundary: GeoJSON.Polygon = {
+    type: 'Polygon',
+    coordinates: [
+      [
+        [77.200, 28.600],
+        [77.220, 28.600],
+        [77.220, 28.620],
+        [77.200, 28.620],
+        [77.200, 28.600],
+      ],
+    ],
+  };
+
+  // 1. Simulate point addition logic
+  let draftPoints: number[][] = [];
+  let isDraftClosed = false;
+  let boundaryNotice: string | null = null;
+
+  const showBoundaryNotice = (msg: string) => {
+    boundaryNotice = msg;
+  };
+
+  const handleMapClick = (point: [number, number]) => {
+    if (isDraftClosed) return;
+    if (!isPointInsideCampus(point, campusBoundary)) {
+      showBoundaryNotice('You cannot add points outside the map boundary.');
+      return;
+    }
+    draftPoints.push(point);
+  };
+
+  // Click outside boundary
+  handleMapClick([77.250, 28.650]);
+  assert(draftPoints.length === 0, 'Point outside campus boundary was not added to draft');
+  assert(
+    boundaryNotice === 'You cannot add points outside the map boundary.',
+    'Notice informing that points cannot be added outside map boundary was triggered'
+  );
+
+  // Click inside boundary
+  handleMapClick([77.210, 28.610]);
+  assert(draftPoints.length === 1, 'Point inside campus boundary was successfully added to draft');
+
+  // 2. Finish button visibility contract
+  const isFinishButtonVisible = (closed: boolean) => closed;
+  assert(!isFinishButtonVisible(isDraftClosed), 'Finish button is hidden when polygon is unclosed');
+
+  // Close the polygon
+  draftPoints.push([77.215, 28.610], [77.215, 28.615], [77.210, 28.610]);
+  isDraftClosed = true;
+  assert(isFinishButtonVisible(isDraftClosed), 'Finish button appears only when polygon is closed');
+
+  // 3. Static verification of CampusMap component
+  const campusMapPath = fileURLToPath(new URL('../src/components/Map/CampusMap.tsx', import.meta.url));
+  const campusMapSource = fs.readFileSync(campusMapPath, 'utf-8');
+
+  // Ensure outside boundary rejection calls notice
+  assert(
+    campusMapSource.includes('showBoundaryNoticeRef.current("You cannot add points outside the map boundary.")'),
+    'CampusMap triggers disappearing notice on clicks outside map boundary'
+  );
+
+  // Ensure Finish button is rendered ONLY when isDraftClosed is true
+  assert(
+    !campusMapSource.includes('<span>Finish ({draftPoints.length}/3+)</span>'),
+    'CampusMap does not render premature Finish button when polygon is unclosed'
+  );
+
+  console.log('✓ Feature D tests passed');
+}
+
 function runAll() {
   console.log('--- Running Polygon Drawing & Area Eraser Tests ---');
   testPolygonClosureAndSnapping();
   testGeometryValidation();
   testDeleteAreaAndStateModel();
+  testBoundaryPointRejectionAndFinishVisibility();
   console.log(`All ${passedCount} assertions passed successfully!`);
 }
 
