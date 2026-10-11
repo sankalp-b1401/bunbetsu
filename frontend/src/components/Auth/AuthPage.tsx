@@ -79,34 +79,34 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F4F7F4] flex flex-col justify-center items-center py-10 sm:py-16 px-4 sm:px-6 relative font-sans">
+    <div className="min-h-screen sm:h-screen w-full bg-[#F4F7F4] flex flex-col justify-center items-center py-4 px-4 sm:px-6 relative font-sans overflow-y-auto">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 bg-[#0D3820] text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-[#0D3820] text-white px-3.5 py-2 rounded-xl shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2">
           <CheckCircle2 className="w-4 h-4 text-[#70D000]" />
           <span>{toastMessage}</span>
         </div>
       )}
 
       {/* Centered Auth Container: Large Logo Above + Centered Card */}
-      <div className="w-full max-w-[460px] mx-auto flex flex-col items-center">
-        {/* Large Bunbetsu Logo Above Auth Panel */}
-        <div className="mb-6 sm:mb-8 flex justify-center items-center">
+      <div className="w-full max-w-[420px] mx-auto flex flex-col items-center">
+        {/* Bunbetsu Logo Above Auth Panel */}
+        <div className="mb-3 sm:mb-4 flex justify-center items-center">
           <img
             src="/bunbetsu-logo.png"
             alt="Bünbetsu"
-            className="h-12 sm:h-14 md:h-16 w-auto object-contain select-none drop-shadow-xs"
+            className="h-9 sm:h-10 w-auto object-contain select-none drop-shadow-xs"
           />
         </div>
 
         {/* Centered Authentication Card */}
-        <div className="w-full bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-9 shadow-[0_4px_30px_rgba(0,0,0,0.03)] border border-[#E3ECE1] transition-all">
+        <div className="w-full bg-white rounded-2xl p-5 sm:p-6 shadow-[0_4px_30px_rgba(0,0,0,0.03)] border border-[#E3ECE1] transition-all">
           {/* Card Header */}
-          <div className="text-center space-y-1">
-            <h2 className="font-heading font-bold text-2xl sm:text-[27px] text-[#103822] tracking-tight">
+          <div className="text-center space-y-0.5">
+            <h2 className="font-heading font-bold text-xl sm:text-2xl text-[#103822] tracking-tight">
               Welcome to Bunbetsu
             </h2>
-            <p className="text-xs sm:text-sm text-[#5A6E62]">
+            <p className="text-xs text-[#5A6E62]">
               {authMode === "login"
                 ? "Sign in to plan cleaner, more sustainable events."
                 : "Create an account to plan cleaner, more sustainable events."}
@@ -114,11 +114,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           </div>
 
           {/* Segmented Pill Tabs: Login | Create account */}
-          <div className="grid grid-cols-2 p-1 rounded-xl bg-white border border-[#E1EBE0] gap-1 mt-6">
+          <div className="grid grid-cols-2 p-1 rounded-xl bg-white border border-[#E1EBE0] gap-1 mt-3.5">
             <button
               type="button"
               onClick={() => setAuthMode("login")}
-              className={`py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 authMode === "login"
                   ? "bg-[#EAF5E7] text-[#0D4421] border border-[#70D000]/30 shadow-2xs"
                   : "text-[#5F7366] hover:text-[#103822] border border-transparent"
@@ -129,7 +129,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             <button
               type="button"
               onClick={() => setAuthMode("signup")}
-              className={`py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 authMode === "signup"
                   ? "bg-[#EAF5E7] text-[#0D4421] border border-[#70D000]/30 shadow-2xs"
                   : "text-[#5F7366] hover:text-[#103822] border border-transparent"
@@ -144,9 +144,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             type="button"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full mt-4 sm:mt-5 py-2.5 sm:py-3 px-4 rounded-xl border border-[#D7E3D6] hover:bg-neutral-50/80 active:bg-neutral-100 transition flex items-center justify-center gap-2.5 text-xs sm:text-sm font-semibold text-[#1F2937] shadow-2xs cursor-pointer select-none"
+            className="w-full mt-3 py-2 px-3.5 rounded-xl border border-[#D7E3D6] hover:bg-neutral-50/80 active:bg-neutral-100 transition flex items-center justify-center gap-2 text-xs font-semibold text-[#1F2937] shadow-2xs cursor-pointer select-none"
           >
-            <svg className="w-4.5 h-4.5 shrink-0" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
@@ -168,19 +168,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           </button>
 
           {/* OR Divider */}
-          <div className="relative my-4.5 sm:my-5 flex items-center justify-center">
+          <div className="relative my-3 flex items-center justify-center">
             <div className="w-full border-t border-[#E1EBE0]" />
-            <span className="absolute bg-white px-3 text-[11px] font-medium text-[#7D9183] uppercase tracking-wider">
+            <span className="absolute bg-white px-2.5 text-[10px] font-medium text-[#7D9183] uppercase tracking-wider">
               OR
             </span>
           </div>
 
           {/* Email & Password Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-2.5">
             {/* Optional Name field in Signup mode */}
             {authMode === "signup" && (
               <div>
-                <label className="block text-xs font-semibold text-[#183E28] mb-1.5">
+                <label className="block text-xs font-semibold text-[#183E28] mb-1">
                   Full name
                 </label>
                 <input
@@ -189,54 +189,54 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Alex S."
-                  className="w-full px-3.5 py-2.5 sm:py-3 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs sm:text-sm text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  className="w-full px-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
                 />
               </div>
             )}
 
             {/* Email address */}
             <div>
-              <label className="block text-xs font-semibold text-[#183E28] mb-1.5">
+              <label className="block text-xs font-semibold text-[#183E28] mb-1">
                 Email address
               </label>
               <div className="relative flex items-center">
-                <Mail className="w-4 h-4 text-[#7C9083] absolute left-3.5 pointer-events-none" />
+                <Mail className="w-3.5 h-3.5 text-[#7C9083] absolute left-3 pointer-events-none" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@university.edu"
-                  className="w-full pl-10 pr-3.5 py-2.5 sm:py-3 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs sm:text-sm text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-semibold text-[#183E28] mb-1.5">
+              <label className="block text-xs font-semibold text-[#183E28] mb-1">
                 Password
               </label>
               <div className="relative flex items-center">
-                <Lock className="w-4 h-4 text-[#7C9083] absolute left-3.5 pointer-events-none" />
+                <Lock className="w-3.5 h-3.5 text-[#7C9083] absolute left-3 pointer-events-none" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full pl-10 pr-10 py-2.5 sm:py-3 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs sm:text-sm text-[#113821] placeholder:text-[#95A79B] transition bg-white"
+                  className="w-full pl-9 pr-9 py-2 rounded-xl border border-[#D5E1D4] focus:outline-none focus:border-[#0D4421] focus:ring-2 focus:ring-[#70D000]/25 text-xs text-[#113821] placeholder:text-[#95A79B] transition bg-white"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 p-0.5 text-[#7C9083] hover:text-[#113821] transition cursor-pointer"
+                  className="absolute right-3 p-0.5 text-[#7C9083] hover:text-[#113821] transition cursor-pointer"
                   title={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
-                    <Eye className="w-4 h-4" />
+                    <Eye className="w-3.5 h-3.5" />
                   ) : (
-                    <EyeOff className="w-4 h-4" />
+                    <EyeOff className="w-3.5 h-3.5" />
                   )}
                 </button>
               </div>
@@ -244,14 +244,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
             {/* Forgot password link */}
             {authMode === "login" && (
-              <div className="text-right pt-0.5">
+              <div className="text-right">
                 <button
                   type="button"
                   onClick={() => {
                     setResetEmail(email !== "you@university.edu" ? email : "");
                     setShowForgotModal(true);
                   }}
-                  className="text-xs font-bold text-[#0D4421] hover:underline cursor-pointer transition"
+                  className="text-[11px] font-bold text-[#0D4421] hover:underline cursor-pointer transition"
                 >
                   Forgot password?
                 </button>
@@ -262,19 +262,19 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3 sm:py-3.5 rounded-xl bg-[#094120] hover:bg-[#073419] active:bg-[#052712] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer font-sans"
+              className="w-full mt-1.5 py-2.5 rounded-xl bg-[#094120] hover:bg-[#073419] active:bg-[#052712] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer font-sans"
             >
               <span>{authMode === "login" ? "Login" : "Create account"}</span>
               {isLoading ? (
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <ArrowRight className="w-4 h-4 text-white stroke-[2.5]" />
+                <ArrowRight className="w-3.5 h-3.5 text-white stroke-[2.5]" />
               )}
             </button>
           </form>
 
           {/* Bottom Toggle Link */}
-          <div className="mt-5 sm:mt-6 text-center text-xs text-[#5E7265]">
+          <div className="mt-3.5 text-center text-xs text-[#5E7265]">
             {authMode === "login" ? (
               <span>
                 Don&apos;t have an account?{" "}
@@ -302,7 +302,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
           {/* Optional Fast Demo Bypass Link */}
           {onContinueAsGuest && (
-            <div className="mt-4 pt-3 border-t border-[#E1EBE0]/60 text-center">
+            <div className="mt-2.5 pt-2 border-t border-[#E1EBE0]/60 text-center">
               <button
                 type="button"
                 onClick={onContinueAsGuest}
