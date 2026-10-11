@@ -13,6 +13,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { HeatmapMode, WasteCategory } from '../../types/bunbetsu';
+import { InfoTooltip } from './InfoTooltip';
 
 interface PlanLayerControlsProps {
   showBoundary: boolean;
@@ -72,6 +73,7 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
               Map layers
             </h3>
+            <InfoTooltip content="Toggle campus boundaries, waste heatmaps, bin markers and route overlays." />
           </div>
         </div>
 

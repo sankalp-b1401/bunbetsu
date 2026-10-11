@@ -48,6 +48,7 @@ interface CampusMapProps {
     locationId: string,
     fallbackLocation?: CampusLocation,
   ) => void;
+  onClearLocationSelection?: () => void;
   onAddCustomLocation?: (newLocation: CampusLocation) => void;
   onUpdateLocation?: (updatedLocation: CampusLocation) => void;
   onStartEditLocation?: (locationId: string) => void;
@@ -95,6 +96,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   locations = [],
   selectedLocationId = null,
   onSelectLocation,
+  onClearLocationSelection,
   onAddCustomLocation,
   onUpdateLocation,
   onStartEditLocation,
@@ -155,6 +157,11 @@ export const CampusMap: React.FC<CampusMapProps> = ({
   useEffect(() => {
     onSelectLocationRef.current = onSelectLocation;
   }, [onSelectLocation]);
+
+  const onClearLocationSelectionRef = useRef(onClearLocationSelection);
+  useEffect(() => {
+    onClearLocationSelectionRef.current = onClearLocationSelection;
+  }, [onClearLocationSelection]);
 
   const onAddCustomLocationRef = useRef(onAddCustomLocation);
   useEffect(() => {
@@ -438,6 +445,43 @@ export const CampusMap: React.FC<CampusMapProps> = ({
       resizeObserver.observe(mapContainerRef.current);
     }
 
+    const handleMapBackgroundClick = (e: maplibregl.MapMouseEvent) => {
+      if (currentModeRef.current === "addArea" || currentModeRef.current === "deleteArea") {
+        return;
+      }
+      if (!onClearLocationSelectionRef.current) {
+        return;
+      }
+      if ((e.originalEvent as any)?._bunbetsuLocationHandled) {
+        return;
+      }
+      const targetEl = e.originalEvent?.target as HTMLElement | null;
+      if (
+        targetEl &&
+        (targetEl.closest(".maplibregl-ctrl") ||
+          targetEl.closest(".maplibregl-marker") ||
+          targetEl.closest(".maplibregl-popup") ||
+          targetEl.closest("[role='tooltip']") ||
+          !map.getCanvas().contains(targetEl))
+      ) {
+        return;
+      }
+
+      const queryLayers = ["location-zones-fill", "location-heatmap-fill"].filter((id) =>
+        map.getLayer(id)
+      );
+      if (queryLayers.length > 0) {
+        const hits = map.queryRenderedFeatures(e.point, { layers: queryLayers });
+        if (hits.length > 0 && hits[0]?.properties?.id) {
+          return;
+        }
+      }
+
+      onClearLocationSelectionRef.current();
+    };
+
+    map.on("click", handleMapBackgroundClick);
+
     map.on("load", () => {
       updateMapLayers(map);
       if (campus) {
@@ -447,6 +491,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
 
     // Cleanup
     return () => {
+      map.off("click", handleMapBackgroundClick);
       resizeObserver.disconnect();
       markersRef.current.forEach((m) => m.remove());
       draftMarkerRefs.current.forEach((m) => m.remove());
@@ -751,6 +796,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
               handleInitiateDeleteArea(locId);
             }
             return;
+          }
+          if (e.originalEvent) {
+            (e.originalEvent as any)._bunbetsuLocationHandled = true;
           }
           if (e.features && e.features[0]?.properties?.id) {
             onSelectLocationRef.current?.(e.features[0].properties.id);
@@ -1398,6 +1446,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             <span class="text-[11px] leading-none">${icon}</span>
           </div>
         `;
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat(bin.coordinates)
           .addTo(map);
@@ -1429,6 +1480,9 @@ export const CampusMap: React.FC<CampusMapProps> = ({
             <span class="text-[11px] leading-none text-white font-bold">🚏</span>
           </div>
         `;
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+        });
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat(rbin.coordinates)
           .addTo(map);
@@ -1593,6 +1647,7 @@ export const CampusMap: React.FC<CampusMapProps> = ({
           return;
         }
         e.stopPropagation();
+        (e as any)._bunbetsuLocationHandled = true;
         onSelectLocationRef.current?.(loc.id);
       });
 

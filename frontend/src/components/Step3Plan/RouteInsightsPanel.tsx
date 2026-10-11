@@ -1,6 +1,7 @@
 import React from 'react';
 import { RoutePlanResult } from '../../types/bunbetsu';
-import { Route, AlertTriangle, AlertCircle, Loader2, Info } from 'lucide-react';
+import { Route, AlertTriangle, AlertCircle, Loader2 } from 'lucide-react';
+import { InfoTooltip } from './InfoTooltip';
 
 interface RouteInsightsPanelProps {
   routeResult: RoutePlanResult | null;
@@ -47,12 +48,7 @@ export const RouteInsightsPanel: React.FC<RouteInsightsPanelProps> = ({
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
             High-traffic routes
           </h3>
-          <span
-            className="text-[#667267] hover:text-[#202820] cursor-help"
-            title="Demand-weighted pedestrian corridors connecting event zones via OpenStreetMap network."
-          >
-            <Info className="w-3.5 h-3.5" />
-          </span>
+          <InfoTooltip content="Inspect the highest-scoring pedestrian route segments and their diagnostics." />
         </div>
 
         {/* Status Badge */}

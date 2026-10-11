@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PredictionResult, BaselineSensitivityPoint } from '../../types/bunbetsu';
 import { BaselineSensitivityChart } from './BaselineSensitivityChart';
+import { InfoTooltip } from './InfoTooltip';
 
 interface WasteOverviewCardsProps {
   prediction: PredictionResult | null;
@@ -107,6 +108,12 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
     'Effect of baseline',
   ];
 
+  const cardTooltips = [
+    'View predicted total waste and compare the estimate with the baseline rate.',
+    'See the predicted mass and percentage share of each waste category.',
+    'Compare total predicted waste across baseline waste-generation rates.',
+  ];
+
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-hidden">
       {/* Top Header with Card Navigation */}
@@ -124,6 +131,7 @@ export const WasteOverviewCards: React.FC<WasteOverviewCardsProps> = ({
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider truncate">
             {cardTitles[activeCard]}
           </h3>
+          <InfoTooltip content={cardTooltips[activeCard]} />
         </div>
 
         {/* Carousel / Navigation buttons */}

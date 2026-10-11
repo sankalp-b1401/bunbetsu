@@ -368,7 +368,7 @@ export interface LocationBinRecommendationItem {
   perimeter_spacing_max_bins: number;
   perimeter_spacing_minimum_bins?: number;
   recommended_bins: RangeModel;
-  required_emptying_turns: RangeModel;
+  required_emptying_turns?: RangeModel;
   daily_capacity_coverage_litres: number;
   capacity_shortfall_litres: number;
   spatial_minimum_bins: number;

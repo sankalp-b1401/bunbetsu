@@ -11,12 +11,14 @@ import {
 } from '../../types/bunbetsu';
 import { CampusMap } from '../Map/CampusMap';
 import { ChevronDown, Trash2, Recycle } from 'lucide-react';
+import { InfoTooltip } from './InfoTooltip';
 
 interface PlanMapPanelProps {
   campus: Campus;
   locations: CampusLocation[];
   selectedLocationId: string | null;
   onSelectLocation: (locationId: string) => void;
+  onClearLocationSelection?: () => void;
 
   heatmapMode: HeatmapMode;
   heatmapCategory: WasteCategory;
@@ -41,6 +43,7 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
   locations,
   selectedLocationId,
   onSelectLocation,
+  onClearLocationSelection,
   heatmapMode,
   heatmapCategory,
   heatmapData,
@@ -88,8 +91,9 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
     <div className="w-full h-full flex flex-col bg-white rounded-xl border border-[#E1E8DE] shadow-2xs overflow-hidden font-sans relative">
       {/* MAP HEADER */}
       <div className="px-3.5 py-2 bg-white border-b border-[#E1E8DE] flex items-center justify-between shrink-0 z-20 relative">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <h2 className="font-heading text-xs sm:text-sm font-bold text-[#202820]">Campus map</h2>
+          <InfoTooltip content="Explore campus locations, waste intensity, recommended bins and pedestrian routes." />
           <span className="text-xs text-[#667267] font-medium hidden sm:inline">
             • {campus.name}
           </span>
@@ -183,6 +187,7 @@ export const PlanMapPanel: React.FC<PlanMapPanelProps> = ({
           locations={locations}
           selectedLocationId={selectedLocationId}
           onSelectLocation={onSelectLocation}
+          onClearLocationSelection={onClearLocationSelection}
           showToolbar={false}
           showLegend={false}
           heightClass="h-full w-full"

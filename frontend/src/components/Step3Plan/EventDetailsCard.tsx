@@ -1,6 +1,7 @@
 import React from 'react';
 import { Calendar, Users, Clock, MapPin, Scale, ChevronRight } from 'lucide-react';
 import { Campus, EventDetails, PredictionResult } from '../../types/bunbetsu';
+import { InfoTooltip } from './InfoTooltip';
 
 interface EventDetailsCardProps {
   campus: Campus;
@@ -26,6 +27,7 @@ export const EventDetailsCard: React.FC<EventDetailsCardProps> = ({
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider truncate">
             Event details
           </h3>
+          <InfoTooltip content="Review the event settings and campus locations used for this plan." />
           <span className="text-[11px] text-[#667267] font-medium truncate hidden md:inline">
             • {eventDetails.festName || 'Campus Event'}
           </span>

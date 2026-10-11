@@ -64,6 +64,10 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
     setSelectedLocationId((prev) => (prev === locId ? null : locId));
   };
 
+  const handleClearLocationSelection = () => {
+    setSelectedLocationId(null);
+  };
+
   const handleSelectRoute = (routeId: string | null) => {
     setSelectedRouteId(routeId);
   };
@@ -191,6 +195,7 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 locations={locations}
                 selectedLocationId={selectedLocationId}
                 onSelectLocation={handleSelectLocation}
+                onClearLocationSelection={handleClearLocationSelection}
                 heatmapMode={heatmapMode}
                 heatmapCategory={heatmapCategory}
                 heatmapData={prediction?.heatmap_data || null}
@@ -234,8 +239,9 @@ export const PlanDashboard: React.FC<PlanDashboardProps> = ({
                 binRecommendations={binRecommendations}
                 roadBinRecommendations={roadBinRecommendations}
                 locationAllocations={prediction?.location_allocations || []}
-                onViewOnMap={() => setShowBins((prev) => !prev)}
-                showBins={showBins}
+                locations={locations}
+                selectedLocationId={selectedLocationId}
+                onDeselectLocation={handleClearLocationSelection}
                 loading={predictionLoading}
               />
             </div>

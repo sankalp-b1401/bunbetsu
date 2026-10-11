@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PredictionResult } from '../../types/bunbetsu';
 import { PieChart as PieChartIcon } from 'lucide-react';
+import { InfoTooltip } from './InfoTooltip';
 
 interface WasteCompositionChartProps {
   prediction: PredictionResult | null;
@@ -76,9 +77,12 @@ export const WasteCompositionChart: React.FC<WasteCompositionChartProps> = ({
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full">
       {/* Header */}
       <div className="flex items-center justify-between pb-1 border-b border-[#E1E8DE]">
-        <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
-          Waste by category
-        </h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
+            Waste by category
+          </h3>
+          <InfoTooltip content="See the predicted mass and percentage share of each waste category." />
+        </div>
         <span className="text-[10px] text-[#667267] font-medium">Model streams</span>
       </div>
 

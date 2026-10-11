@@ -318,7 +318,7 @@ export async function requestCampusPlan(
       perimeter_spacing_minimum_bins:
         loc.perimeter_spacing_minimum_bins ?? loc.perimeter_spacing_max_bins ?? 0,
       recommended_bins: loc.recommended_bins,
-      required_emptying_turns: loc.required_emptying_turns ?? { low: 1, central: 1, high: 1 },
+      required_emptying_turns: loc.required_emptying_turns,
       daily_capacity_coverage_litres: loc.daily_capacity_coverage_litres ?? 0,
       capacity_shortfall_litres: loc.capacity_shortfall_litres ?? 0,
       spatial_minimum_bins: loc.spatial_minimum_bins ?? 0,

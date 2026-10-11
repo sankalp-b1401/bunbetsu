@@ -1,6 +1,7 @@
 import React from 'react';
-import { Route, AlertTriangle, Info } from 'lucide-react';
+import { Route, AlertTriangle } from 'lucide-react';
 import { RoutePlanResult } from '../../types/bunbetsu';
+import { InfoTooltip } from './InfoTooltip';
 
 export interface PedestrianRoutesCardProps {
   routeResult: RoutePlanResult | null;
@@ -62,6 +63,7 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
             Pedestrian Routes
           </h3>
+          <InfoTooltip content="View scored pedestrian corridors, route demand, connectivity and routing diagnostics." />
         </div>
         {isStale && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
@@ -121,8 +123,7 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
       </div>
 
       {/* Explanatory Note / Disclaimer */}
-      <div className="pt-1 border-t border-[#E1E8DE] flex items-start gap-1 text-[9px] text-[#667267] leading-tight font-normal">
-        <Info className="w-3 h-3 text-[#667267] shrink-0 mt-0.5" />
+      <div className="pt-1 border-t border-[#E1E8DE] text-[9.5px] text-[#667267] leading-tight font-normal">
         <span>Relative modelled route importance; not measured footfall.</span>
       </div>
     </div>

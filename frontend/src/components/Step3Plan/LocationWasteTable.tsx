@@ -2,6 +2,7 @@ import React from 'react';
 import { LocationWasteAllocation } from '../../types/bunbetsu';
 import { ACTIVITIES, ActivityIcon } from '../../constants/activities';
 import { MapPin } from 'lucide-react';
+import { InfoTooltip } from './InfoTooltip';
 
 interface LocationWasteTableProps {
   locationAllocations: LocationWasteAllocation[];
@@ -43,6 +44,7 @@ export const LocationWasteTable: React.FC<LocationWasteTableProps> = ({
           <h3 className="font-heading text-xs font-bold text-[#202820] uppercase tracking-wider">
             Location-wise waste estimates
           </h3>
+          <InfoTooltip content="Compare predicted waste allocation across configured event locations." />
         </div>
         <span className="text-[10px] text-[#667267] font-semibold">
           {locationAllocations.length} zone{locationAllocations.length === 1 ? '' : 's'}
