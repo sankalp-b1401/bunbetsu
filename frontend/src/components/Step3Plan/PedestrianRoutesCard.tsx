@@ -47,12 +47,30 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
   const graph = diagnostics?.graph;
   const scoring = diagnostics?.scoring;
 
-  const totalLengthFormatted = graph
-    ? `${(graph.total_length_m / 1000).toFixed(2)} km`
-    : '—';
-  const connectedPairsFormatted = scoring
-    ? `${scoring.connected_pairs} / ${scoring.evaluated_pairs}`
-    : '—';
+  // Real total path length in metres from backend graph diagnostics,
+  // falling back to summing backend paths_geojson feature lengths if graph summary is absent
+  const totalLengthM: number | null = (() => {
+    if (typeof graph?.total_length_m === 'number' && !Number.isNaN(graph.total_length_m)) {
+      return graph.total_length_m;
+    }
+    if (routeResult.paths_geojson?.features?.length) {
+      const sum = routeResult.paths_geojson.features.reduce(
+        (acc, f) => acc + (f.properties?.length_m || 0),
+        0
+      );
+      if (sum > 0) return sum;
+    }
+    return null;
+  })();
+
+  const totalLengthFormatted =
+    totalLengthM !== null
+      ? `${(totalLengthM / 1000).toFixed(2)} km`
+      : '—';
+  const connectedPairsFormatted =
+    scoring && typeof scoring.connected_pairs === 'number' && typeof scoring.evaluated_pairs === 'number'
+      ? `${scoring.connected_pairs} / ${scoring.evaluated_pairs}`
+      : '—';
 
   return (
     <div className="bg-white rounded-xl border border-[#E1E8DE] p-2.5 sm:p-3 shadow-2xs select-none font-sans flex flex-col justify-between h-full overflow-y-auto">
@@ -73,8 +91,8 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
         )}
       </div>
 
-      {/* Main Content Area */}
-      <div className="space-y-2 my-auto py-1">
+      {/* Main Content Area: Evenly distributed sections */}
+      <div className="flex-1 flex flex-col justify-between pt-2">
         {/* Importance Color Ramp */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] font-bold text-[#667267]">
@@ -90,7 +108,7 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
         </div>
 
         {/* Legend Items */}
-        <div className="space-y-1 pt-1 border-t border-[#E1E8DE] text-[10px]">
+        <div className="space-y-1.5 pt-2 border-t border-[#E1E8DE] text-[10px]">
           <div className="flex items-center gap-2">
             <div className="w-4 h-0.5 border-t-2 border-dashed border-[#8B5CF6] shrink-0" />
             <span className="text-[#202820] font-medium leading-none">Inferred access connector</span>
@@ -106,7 +124,7 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
         </div>
 
         {/* Key Stats (Two columns) */}
-        <div className="pt-1 border-t border-[#E1E8DE] grid grid-cols-2 gap-2 text-[10px] text-[#667267]">
+        <div className="pt-2 border-t border-[#E1E8DE] grid grid-cols-2 gap-2 text-[10px] text-[#667267]">
           <div>
             <span className="block font-normal leading-tight">Total path length:</span>
             <span className="font-bold text-[#202820] text-[11px] leading-tight">
@@ -120,11 +138,6 @@ export const PedestrianRoutesCard: React.FC<PedestrianRoutesCardProps> = ({
             </span>
           </div>
         </div>
-      </div>
-
-      {/* Explanatory Note / Disclaimer */}
-      <div className="pt-1 border-t border-[#E1E8DE] text-[9.5px] text-[#667267] leading-tight font-normal">
-        <span>Relative modelled route importance; not measured footfall.</span>
       </div>
     </div>
   );
