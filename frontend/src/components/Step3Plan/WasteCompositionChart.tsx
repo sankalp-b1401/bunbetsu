@@ -18,8 +18,8 @@ interface CategorySlice {
 const CATEGORY_COLORS: Record<string, string> = {
   Food: '#EA580C',
   Plastic: '#0284C7',
-  Paper: '#8B5CF6',
-  Glass: '#0D9488',
+  Paper: '#78350F',
+  Glass: '#CA8A04',
   Others: '#64748B',
 };
 

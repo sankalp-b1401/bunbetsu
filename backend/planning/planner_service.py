@@ -580,6 +580,7 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                         served_disposable_location_ids=list(p.served_disposable_location_ids),
                         served_recyclable_location_ids=list(p.served_recyclable_location_ids),
                         physical_bin_count=p.physical_bin_count,
+                        required_spacing_m=getattr(p, "required_spacing_m", None),
                         provenance=p.provenance,
                     )
                     for p in road_bin_result.placements
@@ -610,6 +611,10 @@ async def execute_campus_plan(request: CampusPlanRequest) -> CampusPlanResponse:
                     total_popularity_score=road_bin_result.total_popularity_score,
                     placements=road_markers,
                     spacing_validation_passed=road_bin_result.spacing_validation_passed,
+                    total_eligible_corridor_sections=road_bin_result.total_eligible_corridor_sections,
+                    covered_corridor_sections=list(road_bin_result.covered_corridor_sections),
+                    uncovered_corridor_sections=list(road_bin_result.uncovered_corridor_sections),
+                    diagnostics=dict(road_bin_result.diagnostics),
                     warnings=list(road_bin_result.warnings),
                     assumptions=list(road_bin_result.assumptions),
                 )

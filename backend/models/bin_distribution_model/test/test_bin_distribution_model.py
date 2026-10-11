@@ -11,6 +11,11 @@ from bin_distribution_model.bin_distribution_model import (
     DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M,
     DEFAULT_WASTE_INFLUENCE_RADII_M,
     DISPOSABLE_WASTE_CATEGORIES,
+    POPULARITY_SPACING_HIGH_M,
+    POPULARITY_SPACING_LOW_M,
+    POPULARITY_SPACING_MEDIUM_M,
+    POPULARITY_TIER_HIGH_THRESHOLD,
+    POPULARITY_TIER_MEDIUM_THRESHOLD,
     RECYCLABLE_WASTE_CATEGORIES,
     USABLE_BIN_CAPACITY_LITRES,
     WASTE_DENSITY_KG_PER_M3,
@@ -25,7 +30,10 @@ from bin_distribution_model.bin_distribution_model import (
     determine_dominant_waste_type,
     determine_stream_dominant_waste_types,
     find_spacing_conflict_pairs,
+    get_candidate_spacing,
     get_influence_radius_m,
+    get_popularity_target_spacing,
+    get_popularity_tier,
     predict_on_location_bins,
     predict_road_bins,
     round_half_up,
@@ -525,7 +533,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6004], [77.2011, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
             }],
         }
@@ -546,7 +554,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6004], [77.2011, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
             }],
         }
@@ -566,7 +574,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6000], [77.2011, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2011, 28.6004], [77.2011, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
             }],
         }
@@ -589,7 +597,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-mid",
-                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6000], [77.2015, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6004], [77.2015, 28.6006]]},
                 "properties": {"id": "way-mid", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
             }],
         }
@@ -612,7 +620,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.8, "provenance": "osm_mapped"},
             }],
         }
@@ -635,7 +643,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "shared-way",
-                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6000], [77.2009, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6004], [77.2009, 28.6006]]},
                 "properties": {"id": "shared-way", "highway": "footway", "normalized_score": 0.75, "provenance": "osm_mapped"},
             }],
         }
@@ -677,7 +685,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "features": [{
                 "type": "Feature",
                 "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6000], [77.2015, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2015, 28.6004], [77.2015, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.7, "provenance": "osm_mapped"},
             }],
         }
@@ -867,7 +875,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "type": "FeatureCollection",
             "features": [{
                 "type": "Feature", "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
             }],
         }
@@ -888,7 +896,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "type": "FeatureCollection",
             "features": [{
                 "type": "Feature", "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
             }],
         }
@@ -909,7 +917,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "type": "FeatureCollection",
             "features": [{
                 "type": "Feature", "id": "way-1",
-                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
                 "properties": {"id": "way-1", "highway": "footway", "normalized_score": 0.6, "provenance": "osm_mapped"},
             }],
         }
@@ -932,7 +940,7 @@ class TestRoadBinPlacementModel(unittest.TestCase):
             "type": "FeatureCollection",
             "features": [{
                 "type": "Feature", "id": "shared-way",
-                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6000], [77.2009, 28.6010]]},
+                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6004], [77.2009, 28.6006]]},
                 "properties": {"id": "shared-way", "highway": "footway", "normalized_score": 0.75, "provenance": "osm_mapped"},
             }],
         }
@@ -948,12 +956,12 @@ class TestRoadBinPlacementModel(unittest.TestCase):
     def test_d5_popularity_tie_break_never_increases_bins(self):
         road_low = {
             "type": "Feature", "id": "way-low",
-            "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.59995], [77.2005, 28.59995]]},
-            "properties": {"id": "way-low", "normalized_score": 0.2, "provenance": "osm_mapped"},
+            "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.59995], [77.20025, 28.59995]]},
+            "properties": {"id": "way-low", "normalized_score": 0.0, "provenance": "osm_mapped"},
         }
         road_high = {
             "type": "Feature", "id": "way-high",
-            "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.60105], [77.2005, 28.60105]]},
+            "geometry": {"type": "LineString", "coordinates": [[77.2000, 28.60105], [77.20025, 28.60105]]},
             "properties": {"id": "way-high", "normalized_score": 0.95, "provenance": "osm_mapped"},
         }
         res = predict_road_bins(
@@ -1073,6 +1081,391 @@ class TestRoadBinPlacementModel(unittest.TestCase):
         self.assertEqual(run1.placements[0].coordinates, run2.placements[0].coordinates)
         self.assertEqual(run1.placements[0].placement_id, run2.placements[0].placement_id)
         self.assertEqual(run1.placements[0].stream_types, run2.placements[0].stream_types)
+
+
+class TestPopularityTiersAndSpacing(unittest.TestCase):
+    """Verify popularity tier thresholds, validation rules, and spacing calculations."""
+
+    def test_e1_popularity_tier_boundaries(self):
+        # High tier: score >= 0.60
+        self.assertEqual(get_popularity_tier(1.0), "high")
+        self.assertEqual(get_popularity_tier(0.60), "high")
+        self.assertEqual(get_popularity_target_spacing(1.0), 25.0)
+        self.assertEqual(get_popularity_target_spacing(0.60), 25.0)
+
+        # Medium tier: 0.25 <= score < 0.60
+        self.assertEqual(get_popularity_tier(0.5999), "medium")
+        self.assertEqual(get_popularity_tier(0.25), "medium")
+        self.assertEqual(get_popularity_target_spacing(0.5999), 50.0)
+        self.assertEqual(get_popularity_target_spacing(0.25), 50.0)
+
+        # Low but positive tier: 0.0 < score < 0.25
+        self.assertEqual(get_popularity_tier(0.2499), "low")
+        self.assertEqual(get_popularity_tier(1e-6), "low")
+        self.assertEqual(get_popularity_target_spacing(0.2499), 100.0)
+        self.assertEqual(get_popularity_target_spacing(1e-6), 100.0)
+
+        # Zero tier: score == 0.0
+        self.assertEqual(get_popularity_tier(0.0), "zero")
+        self.assertIsNone(get_popularity_target_spacing(0.0))
+        self.assertEqual(get_popularity_target_spacing(0.0, default_zero_spacing_m=25.0), 25.0)
+
+    def test_e2_popularity_tier_validation_errors(self):
+        with self.assertRaises(ValueError):
+            get_popularity_tier(-0.1)
+        with self.assertRaises(ValueError):
+            get_popularity_tier(1.05)
+        with self.assertRaises(ValueError):
+            get_popularity_tier(float("nan"))
+        with self.assertRaises(ValueError):
+            get_popularity_tier(float("inf"))
+        with self.assertRaises(ValueError):
+            get_popularity_tier("invalid")  # type: ignore
+
+    def test_e3_candidate_spacing_helper(self):
+        cand_high = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=0.0, metric_y=0.0,
+            source_segment_id="s1", normalized_popularity_score=0.75,
+        )
+        cand_med = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=0.0, metric_y=0.0,
+            source_segment_id="s1", normalized_popularity_score=0.40,
+        )
+        cand_low = RoadBinCandidate(
+            candidate_id="c3", longitude=77.2, latitude=28.6, metric_x=0.0, metric_y=0.0,
+            source_segment_id="s1", normalized_popularity_score=0.10,
+        )
+        cand_zero = RoadBinCandidate(
+            candidate_id="c4", longitude=77.2, latitude=28.6, metric_x=0.0, metric_y=0.0,
+            source_segment_id="s1", normalized_popularity_score=0.0,
+        )
+        self.assertEqual(get_candidate_spacing(cand_high), 25.0)
+        self.assertEqual(get_candidate_spacing(cand_med), 50.0)
+        self.assertEqual(get_candidate_spacing(cand_low), 100.0)
+        self.assertEqual(get_candidate_spacing(cand_zero, default_spacing_m=25.0), 25.0)
+
+
+class TestVariableSpacingConflictDetection(unittest.TestCase):
+    """Verify pair-specific along-corridor spacing conflict detection under the stricter-pair rule."""
+
+    def setUp(self):
+        from shapely.geometry import LineString
+        self.graph = RoadCorridorGraph()
+        self.graph.add_segment("seg1", LineString([(0, 0), (250, 0)]))
+        self.graph.build_topology()
+
+    def test_f1_stricter_pair_high_high_25m(self):
+        # High (0.8) and High (0.7): required spacing = 25m
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.8, segment_attachments=(("seg1", 10.0),)
+        )
+        cand2_conflict = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=34.9, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.7, segment_attachments=(("seg1", 34.9),)
+        )
+        cand2_ok = RoadBinCandidate(
+            candidate_id="c2_ok", longitude=77.2, latitude=28.6, metric_x=35.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.7, segment_attachments=(("seg1", 35.0),)
+        )
+        self.assertEqual(find_spacing_conflict_pairs([cand1, cand2_conflict], self.graph), [(0, 1)])
+        self.assertEqual(find_spacing_conflict_pairs([cand1, cand2_ok], self.graph), [])
+
+    def test_f2_stricter_pair_high_medium_50m(self):
+        # High (0.8 -> 25m) and Medium (0.4 -> 50m): required = max(25, 50) = 50m
+        cand_high = RoadBinCandidate(
+            candidate_id="ch", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.8, segment_attachments=(("seg1", 10.0),)
+        )
+        cand_med_conflict = RoadBinCandidate(
+            candidate_id="cm", longitude=77.2, latitude=28.6, metric_x=55.0, metric_y=0.0,  # 45m apart (< 50m)
+            source_segment_id="seg1", normalized_popularity_score=0.4, segment_attachments=(("seg1", 55.0),)
+        )
+        cand_med_ok = RoadBinCandidate(
+            candidate_id="cm_ok", longitude=77.2, latitude=28.6, metric_x=60.0, metric_y=0.0,  # 50m apart (>= 50m)
+            source_segment_id="seg1", normalized_popularity_score=0.4, segment_attachments=(("seg1", 60.0),)
+        )
+        # Even though 45m > 25m, the stricter medium requirement (50m) must trigger conflict
+        self.assertEqual(find_spacing_conflict_pairs([cand_high, cand_med_conflict], self.graph), [(0, 1)])
+        self.assertEqual(find_spacing_conflict_pairs([cand_high, cand_med_ok], self.graph), [])
+
+    def test_f3_stricter_pair_medium_low_100m(self):
+        # Medium (0.4 -> 50m) and Low (0.1 -> 100m): required = max(50, 100) = 100m
+        cand_med = RoadBinCandidate(
+            candidate_id="cm", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.4, segment_attachments=(("seg1", 10.0),)
+        )
+        cand_low_conflict = RoadBinCandidate(
+            candidate_id="cl", longitude=77.2, latitude=28.6, metric_x=90.0, metric_y=0.0,  # 80m apart (< 100m)
+            source_segment_id="seg1", normalized_popularity_score=0.1, segment_attachments=(("seg1", 90.0),)
+        )
+        cand_low_ok = RoadBinCandidate(
+            candidate_id="cl_ok", longitude=77.2, latitude=28.6, metric_x=110.0, metric_y=0.0,  # 100m apart
+            source_segment_id="seg1", normalized_popularity_score=0.1, segment_attachments=(("seg1", 110.0),)
+        )
+        self.assertEqual(find_spacing_conflict_pairs([cand_med, cand_low_conflict], self.graph), [(0, 1)])
+        self.assertEqual(find_spacing_conflict_pairs([cand_med, cand_low_ok], self.graph), [])
+
+    def test_f4_stricter_pair_low_low_100m(self):
+        # Low (0.05 -> 100m) and Low (0.15 -> 100m): required = 100m
+        cand_l1 = RoadBinCandidate(
+            candidate_id="cl1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.05, segment_attachments=(("seg1", 10.0),)
+        )
+        cand_l2_conflict = RoadBinCandidate(
+            candidate_id="cl2", longitude=77.2, latitude=28.6, metric_x=105.0, metric_y=0.0,  # 95m apart
+            source_segment_id="seg1", normalized_popularity_score=0.15, segment_attachments=(("seg1", 105.0),)
+        )
+        cand_l2_ok = RoadBinCandidate(
+            candidate_id="cl2_ok", longitude=77.2, latitude=28.6, metric_x=110.0, metric_y=0.0,  # 100m apart
+            source_segment_id="seg1", normalized_popularity_score=0.15, segment_attachments=(("seg1", 110.0),)
+        )
+        self.assertEqual(find_spacing_conflict_pairs([cand_l1, cand_l2_conflict], self.graph), [(0, 1)])
+        self.assertEqual(find_spacing_conflict_pairs([cand_l1, cand_l2_ok], self.graph), [])
+
+    def test_f5_contiguous_corridor_across_segment_boundaries_with_variable_spacing(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg_a", LineString([(0, 0), (50, 0)]), {"osm_way_id": 10})
+        graph.add_segment("seg_b", LineString([(50, 0), (150, 0)]), {"osm_way_id": 10})
+        graph.build_topology()
+
+        # cand_a on seg_a (High 0.8 -> 25m, at x=40, 10m from junction)
+        # cand_b on seg_b (Medium 0.4 -> 50m, at x=80, 30m from junction)
+        # Along-corridor distance = 10 + 30 = 40m. Required = max(25, 50) = 50m.
+        cand_a = RoadBinCandidate(
+            candidate_id="ca", longitude=77.2, latitude=28.6, metric_x=40.0, metric_y=0.0,
+            source_segment_id="seg_a", normalized_popularity_score=0.8, segment_attachments=(("seg_a", 40.0),)
+        )
+        cand_b_conflict = RoadBinCandidate(
+            candidate_id="cb", longitude=77.2, latitude=28.6, metric_x=80.0, metric_y=0.0,
+            source_segment_id="seg_b", normalized_popularity_score=0.4, segment_attachments=(("seg_b", 30.0),)
+        )
+        cand_b_ok = RoadBinCandidate(
+            candidate_id="cb_ok", longitude=77.2, latitude=28.6, metric_x=95.0, metric_y=0.0,  # 45m from junction -> 55m total
+            source_segment_id="seg_b", normalized_popularity_score=0.4, segment_attachments=(("seg_b", 45.0),)
+        )
+        self.assertEqual(find_spacing_conflict_pairs([cand_a, cand_b_conflict], graph), [(0, 1)])
+        self.assertEqual(find_spacing_conflict_pairs([cand_a, cand_b_ok], graph), [])
+
+    def test_f6_crossing_roads_not_treated_as_same_corridor(self):
+        from shapely.geometry import LineString
+        graph = RoadCorridorGraph()
+        graph.add_segment("seg_ew", LineString([(0, 50), (100, 50)]), {"osm_way_id": 1})
+        graph.add_segment("seg_ns", LineString([(50, 0), (50, 100)]), {"osm_way_id": 2})
+        graph.build_topology()
+
+        # cand1 on EW at x=40, y=50 (High 0.8)
+        # cand2 on NS at x=50, y=40 (Medium 0.4)
+        # Euclidean distance is ~14.14m (< 50m), but they are on crossing, independent segments
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=40.0, metric_y=50.0,
+            source_segment_id="seg_ew", normalized_popularity_score=0.8, segment_attachments=(("seg_ew", 40.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=50.0, metric_y=40.0,
+            source_segment_id="seg_ns", normalized_popularity_score=0.4, segment_attachments=(("seg_ns", 40.0),)
+        )
+        self.assertEqual(find_spacing_conflict_pairs([cand1, cand2], graph), [])
+
+    def test_f7_min_spacing_override_backward_compatibility(self):
+        # Even with High (0.8), passing min_spacing_m=40.0 overrides the default 25m
+        cand1 = RoadBinCandidate(
+            candidate_id="c1", longitude=77.2, latitude=28.6, metric_x=10.0, metric_y=0.0,
+            source_segment_id="seg1", normalized_popularity_score=0.8, segment_attachments=(("seg1", 10.0),)
+        )
+        cand2 = RoadBinCandidate(
+            candidate_id="c2", longitude=77.2, latitude=28.6, metric_x=45.0, metric_y=0.0,  # 35m apart
+            source_segment_id="seg1", normalized_popularity_score=0.8, segment_attachments=(("seg1", 45.0),)
+        )
+        # Without override: 35m >= 25m -> no conflict
+        self.assertEqual(find_spacing_conflict_pairs([cand1, cand2], self.graph), [])
+        # With override 40.0: 35m < 40m -> conflict
+        self.assertEqual(find_spacing_conflict_pairs([cand1, cand2], self.graph, min_spacing_m=40.0), [(0, 1)])
+
+
+class TestSpacingValidatorAgreement(unittest.TestCase):
+    """Verify that validate_road_bin_spacing enforces the identical stricter-pair variable spacing policy."""
+
+    def setUp(self):
+        from shapely.geometry import LineString
+        self.graph = RoadCorridorGraph()
+        self.graph.add_segment("seg1", LineString([(0, 0), (250, 0)]))
+        self.graph.build_topology()
+
+    def test_g1_validator_accepts_valid_pair_and_rejects_violating_pair(self):
+        # p1 (High 0.8 -> 25m) at x=0
+        # p2 (Medium 0.4 -> 50m) at x=40 (violates max(25, 50) = 50m)
+        p1 = RoadBinPlacement(
+            placement_id="p1", longitude=77.2, latitude=28.6,
+            source_segment_id="seg1", normalized_popularity_score=0.8,
+            required_spacing_m=25.0,
+        )
+        p2_bad = RoadBinPlacement(
+            placement_id="p2", longitude=77.2, latitude=28.6,
+            source_segment_id="seg1", normalized_popularity_score=0.4,
+            required_spacing_m=50.0,
+        )
+        p2_good = RoadBinPlacement(
+            placement_id="p2_ok", longitude=77.2, latitude=28.6,
+            source_segment_id="seg1", normalized_popularity_score=0.4,
+            required_spacing_m=50.0,
+        )
+        att_bad = {"p1": {"seg1": 0.0}, "p2": {"seg1": 40.0}}
+        passed_bad, msgs_bad = validate_road_bin_spacing([p1, p2_bad], self.graph, placement_attachments=att_bad)
+        self.assertFalse(passed_bad)
+        self.assertTrue(len(msgs_bad) > 0)
+        self.assertIn("50", msgs_bad[0])
+
+        att_good = {"p1": {"seg1": 0.0}, "p2_ok": {"seg1": 55.0}}
+        passed_good, msgs_good = validate_road_bin_spacing([p1, p2_good], self.graph, placement_attachments=att_good)
+        self.assertTrue(passed_good)
+        self.assertEqual(len(msgs_good), 0)
+
+    def test_g2_validator_min_spacing_override(self):
+        p1 = RoadBinPlacement(
+            placement_id="p1", longitude=77.2, latitude=28.6,
+            source_segment_id="seg1", normalized_popularity_score=0.8,
+            required_spacing_m=25.0,
+        )
+        p2 = RoadBinPlacement(
+            placement_id="p2", longitude=77.2, latitude=28.6,
+            source_segment_id="seg1", normalized_popularity_score=0.8,
+            required_spacing_m=25.0,
+        )
+        att = {"p1": {"seg1": 0.0}, "p2": {"seg1": 30.0}}  # 30m apart
+        # Passes under natural 25m spacing
+        passed_25, _ = validate_road_bin_spacing([p1, p2], self.graph, placement_attachments=att)
+        self.assertTrue(passed_25)
+        # Fails when min_spacing_m=35.0 is enforced
+        passed_35, msgs_35 = validate_road_bin_spacing([p1, p2], self.graph, placement_attachments=att, min_spacing_m=35.0)
+        self.assertFalse(passed_35)
+        self.assertIn("35", msgs_35[0])
+
+
+class TestCorridorPlacementRequirementsAndCoverage(unittest.TestCase):
+    """Verify that all eligible positive-popularity corridors receive placements and satisfy spacing."""
+
+    def setUp(self):
+        self.sample_polygon = {
+            "type": "Polygon",
+            "coordinates": [[[77.2000, 28.6000], [77.2010, 28.6000], [77.2010, 28.6010], [77.2000, 28.6010], [77.2000, 28.6000]]],
+        }
+        self.sample_boundary = {
+            "type": "Polygon",
+            "coordinates": [[[77.1980, 28.5980], [77.2040, 28.5980], [77.2040, 28.6040], [77.1980, 28.6040], [77.1980, 28.5980]]],
+        }
+
+    def test_h1_high_medium_low_corridors_all_receive_placements(self):
+        # 3 distinct corridors around sample_polygon:
+        # road_high on East, road_med on North, road_low on South
+        road_high = {
+            "type": "Feature", "id": "way-high",
+            "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
+            "properties": {"id": "way-high", "normalized_score": 0.85, "provenance": "osm_mapped"},
+        }
+        road_med = {
+            "type": "Feature", "id": "way-med",
+            "geometry": {"type": "LineString", "coordinates": [[77.2004, 28.60105], [77.2006, 28.60105]]},
+            "properties": {"id": "way-med", "normalized_score": 0.45, "provenance": "osm_mapped"},
+        }
+        road_low = {
+            "type": "Feature", "id": "way-low",
+            "geometry": {"type": "LineString", "coordinates": [[77.2004, 28.59995], [77.2006, 28.59995]]},
+            "properties": {"id": "way-low", "normalized_score": 0.15, "provenance": "osm_mapped"},
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0}},
+            paths_geojson={"type": "FeatureCollection", "features": [road_high, road_med, road_low]},
+            campus_boundary=self.sample_boundary,
+        )
+        # All three positive-popularity corridors must receive placements!
+        placed_segs = {p.source_segment_id for p in res.placements}
+        self.assertIn("way-high", placed_segs)
+        self.assertIn("way-med", placed_segs)
+        self.assertIn("way-low", placed_segs)
+        self.assertEqual(res.total_eligible_corridor_sections, 3)
+        self.assertEqual(len(res.covered_corridor_sections), 3)
+        self.assertEqual(len(res.uncovered_corridor_sections), 0)
+
+    def test_h2_zero_popularity_corridor_not_forced_by_popularity(self):
+        # road_pos (0.50) and road_zero (0.0)
+        road_pos = {
+            "type": "Feature", "id": "way-pos",
+            "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6004], [77.20105, 28.6006]]},
+            "properties": {"id": "way-pos", "normalized_score": 0.50, "provenance": "osm_mapped"},
+        }
+        road_zero = {
+            "type": "Feature", "id": "way-zero",
+            "geometry": {"type": "LineString", "coordinates": [[77.2004, 28.60105], [77.2006, 28.60105]]},
+            "properties": {"id": "way-zero", "normalized_score": 0.0, "provenance": "osm_mapped"},
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0}},
+            paths_geojson={"type": "FeatureCollection", "features": [road_pos, road_zero]},
+            campus_boundary=self.sample_boundary,
+        )
+        placed_segs = {p.source_segment_id for p in res.placements}
+        self.assertIn("way-pos", placed_segs)
+        self.assertNotIn("way-zero", placed_segs)
+
+    def test_h3_long_corridor_receives_multiple_spaced_placements(self):
+        # High popularity road ~111m long (coordinates span 0.0010 lat)
+        # With 25m spacing, 111m / 25m = ~4.4 -> 5 placements
+        road_high_long = {
+            "type": "Feature", "id": "way-long-high",
+            "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+            "properties": {"id": "way-long-high", "normalized_score": 0.80, "provenance": "osm_mapped"},
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0}},
+            paths_geojson={"type": "FeatureCollection", "features": [road_high_long]},
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertGreaterEqual(res.total_stations, 4)
+        self.assertTrue(res.spacing_validation_passed)
+
+    def test_h4_overlapping_zones_share_stations_with_corridor_coverage(self):
+        loc1 = {"type": "Polygon", "coordinates": [[[77.2000, 28.6000], [77.2008, 28.6000], [77.2008, 28.6010], [77.2000, 28.6010], [77.2000, 28.6000]]]}
+        loc2 = {"type": "Polygon", "coordinates": [[[77.2010, 28.6000], [77.2018, 28.6000], [77.2018, 28.6010], [77.2010, 28.6010], [77.2010, 28.6000]]]}
+        road = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature", "id": "shared-way",
+                "geometry": {"type": "LineString", "coordinates": [[77.2009, 28.6004], [77.2009, 28.6006]]},
+                "properties": {"id": "shared-way", "normalized_score": 0.70, "provenance": "osm_mapped"},
+            }],
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": loc1, "loc2": loc2},
+            waste_compositions={"loc1": {"Food": 100.0}, "loc2": {"Plastic": 100.0}},
+            paths_geojson=road,
+            campus_boundary=self.sample_boundary,
+        )
+        self.assertEqual(res.total_stations, 1)
+        self.assertEqual(res.total_physical_bins, 2)
+        p = res.placements[0]
+        self.assertIn("loc1", p.served_disposable_location_ids)
+        self.assertIn("loc2", p.served_recyclable_location_ids)
+
+    def test_h5_greedy_fallback_satisfies_variable_spacing(self):
+        road_high = {
+            "type": "Feature", "id": "way-high",
+            "geometry": {"type": "LineString", "coordinates": [[77.20105, 28.6000], [77.20105, 28.6010]]},
+            "properties": {"id": "way-high", "normalized_score": 0.85, "provenance": "osm_mapped"},
+        }
+        res = predict_road_bins(
+            location_geometries={"loc1": self.sample_polygon},
+            waste_compositions={"loc1": {"Food": 100.0}},
+            paths_geojson={"type": "FeatureCollection", "features": [road_high]},
+            campus_boundary=self.sample_boundary,
+            solver_mode="fallback",
+        )
+        self.assertTrue(res.spacing_validation_passed)
+        self.assertEqual(res.solver_name, "greedy_set_cover_heuristic")
 
 
 if __name__ == "__main__":

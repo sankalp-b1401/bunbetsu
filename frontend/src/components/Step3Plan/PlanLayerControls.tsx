@@ -38,8 +38,8 @@ interface PlanLayerControlsProps {
 const CATEGORY_OPTIONS: Array<{ value: WasteCategory; label: string; color: string }> = [
   { value: 'Food', label: 'Food waste', color: '#EA580C' },
   { value: 'Plastic', label: 'Plastic', color: '#9333EA' },
-  { value: 'Paper', label: 'Paper', color: '#2563EB' },
-  { value: 'Glass', label: 'Glass', color: '#0D9488' },
+  { value: 'Paper', label: 'Paper', color: '#78350F' },
+  { value: 'Glass', label: 'Glass', color: '#CA8A04' },
   { value: 'Others', label: 'Others', color: '#64748B' },
 ];
 
@@ -168,7 +168,7 @@ export const PlanLayerControls: React.FC<PlanLayerControlsProps> = ({
             <div className="flex items-center gap-2">
               <span
                 className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                  heatmapMode === 'total' ? 'bg-[#EAF5E6] text-[#004B20]' : 'text-[#667267]'
+                  heatmapMode === 'total' ? 'bg-red-50 text-red-600' : 'text-[#667267]'
                 }`}
               >
                 <Flame className="w-3.5 h-3.5" />

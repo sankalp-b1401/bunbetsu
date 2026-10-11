@@ -22,6 +22,7 @@ collection feasibility must be reviewed before deployment.
 from __future__ import annotations
 
 import dataclasses
+from collections import defaultdict
 from dataclasses import dataclass
 import math
 from typing import Any, Mapping, Sequence
@@ -90,6 +91,87 @@ RECYCLABLE_WASTE_CATEGORIES: tuple[str, ...] = ("Glass", "Paper", "Plastic")
 
 DEFAULT_ROAD_BIN_SPACING_M = 25.0
 DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M = 5.0
+
+# Configurable popularity tiers and target minimum spacing policy
+POPULARITY_TIER_HIGH_THRESHOLD = 0.60
+POPULARITY_TIER_MEDIUM_THRESHOLD = 0.25
+
+POPULARITY_SPACING_HIGH_M = 50.0
+POPULARITY_SPACING_MEDIUM_M = 100.0
+POPULARITY_SPACING_LOW_M = 200.0
+
+DEFAULT_POPULARITY_TIER_SPACING_M: dict[str, float] = {
+    "high": POPULARITY_SPACING_HIGH_M,
+    "medium": POPULARITY_SPACING_MEDIUM_M,
+    "low": POPULARITY_SPACING_LOW_M,
+}
+
+
+def get_popularity_tier(score: float) -> str:
+    """Map normalized popularity score to popularity tier: 'high', 'medium', 'low', or 'zero'.
+
+    Tiers:
+    - High: score >= 0.60 (target spacing: 25 m)
+    - Medium: 0.25 <= score < 0.60 (target spacing: 50 m)
+    - Low but positive: 0 < score < 0.25 (target spacing: 100 m)
+    - Zero: score == 0.0 (no popularity-based corridor placement requirement)
+
+    Validates that score is a finite number in the normalized range [0.0, 1.0].
+    """
+    if not isinstance(score, (int, float)) or not math.isfinite(float(score)):
+        raise ValueError(f"Popularity score must be a finite number in [0.0, 1.0], got {score!r}.")
+    s = float(score)
+    if s < -1e-9 or s > 1.0 + 1e-9:
+        raise ValueError(f"Popularity score must be in range [0.0, 1.0], got {score}.")
+    s = max(0.0, min(1.0, s))
+
+    if s >= POPULARITY_TIER_HIGH_THRESHOLD:
+        return "high"
+    elif s >= POPULARITY_TIER_MEDIUM_THRESHOLD:
+        return "medium"
+    elif s > 0.0:
+        return "low"
+    else:
+        return "zero"
+
+
+def get_popularity_target_spacing(
+    score: float,
+    default_zero_spacing_m: float | None = None,
+) -> float | None:
+    """Map normalized popularity score to target minimum spacing in metres.
+
+    Returns:
+    - 25.0 m for High (score >= 0.60)
+    - 50.0 m for Medium (0.25 <= score < 0.60)
+    - 100.0 m for Low but positive (0 < score < 0.25)
+    - default_zero_spacing_m (or None) for Zero (score == 0.0)
+    """
+    tier = get_popularity_tier(score)
+    if tier == "high":
+        return POPULARITY_SPACING_HIGH_M
+    elif tier == "medium":
+        return POPULARITY_SPACING_MEDIUM_M
+    elif tier == "low":
+        return POPULARITY_SPACING_LOW_M
+    else:
+        return default_zero_spacing_m
+
+
+def get_candidate_spacing(
+    cand: Any,
+    default_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+) -> float:
+    """Determine the applicable minimum spacing for a candidate or placement.
+
+    Derives spacing from normalized_popularity_score if positive;
+    falls back to default_spacing_m for zero-popularity or unannotated items.
+    """
+    score = getattr(cand, "normalized_popularity_score", 0.0)
+    if score is None:
+        score = 0.0
+    spacing = get_popularity_target_spacing(score, default_zero_spacing_m=default_spacing_m)
+    return spacing if spacing is not None else default_spacing_m
 
 
 def round_half_up(value: float) -> int:
@@ -295,6 +377,30 @@ class RoadBinCandidate:
 
 
 @dataclass(frozen=True)
+class CorridorRequirement:
+    """A coverage requirement for a continuous positive-popularity corridor section or section interval."""
+
+    requirement_id: str
+    section_id: str
+    tier: str
+    target_spacing_m: float
+    candidate_indices: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class CorridorSection:
+    """A continuous mapped road corridor section with consistent popularity tier."""
+
+    section_id: str
+    tier: str
+    target_spacing_m: float
+    length_m: float
+    required_placements: int
+    candidate_indices: tuple[int, ...]
+    requirements: tuple[CorridorRequirement, ...]
+
+
+@dataclass(frozen=True)
 class RoadBinPlacement:
     """A selected physical road bin placed along a pedestrian path."""
 
@@ -303,15 +409,16 @@ class RoadBinPlacement:
     latitude: float
     source_segment_id: str
     normalized_popularity_score: float
-    served_location_ids: tuple[str, ...]
-    served_location_names: tuple[str, ...]
-    served_location_distances_m: dict[str, float]
+    served_location_ids: tuple[str, ...] = ()
+    served_location_names: tuple[str, ...] = ()
+    served_location_distances_m: dict[str, float] = dataclasses.field(default_factory=dict)
     stream_type: str = "Dual-compartment station"
     stream_types: tuple[str, ...] = ("Disposable", "Recyclable")
     served_disposable_location_ids: tuple[str, ...] = ()
     served_recyclable_location_ids: tuple[str, ...] = ()
     physical_bin_count: int = 1
     provenance: str = "road_bin_optimizer"
+    required_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M
 
     @property
     def coordinates(self) -> tuple[float, float]:
@@ -350,6 +457,9 @@ class RoadBinPrediction:
     spacing_validation_passed: bool = True
     spacing_violations: tuple[str, ...] = ()
     diagnostics: dict[str, Any] = dataclasses.field(default_factory=dict)
+    total_eligible_corridor_sections: int = 0
+    covered_corridor_sections: tuple[str, ...] = ()
+    uncovered_corridor_sections: tuple[str, ...] = ()
 
     @property
     def total_road_bins(self) -> int:
@@ -1393,32 +1503,230 @@ class RoadCorridorGraph:
         return min_d
 
 
+def extract_corridor_placement_requirements(
+    candidates: Sequence[RoadBinCandidate],
+    corridor_graph: RoadCorridorGraph,
+    candidate_sampling_interval_m: float = DEFAULT_ROAD_CANDIDATE_SAMPLING_INTERVAL_M,
+) -> tuple[list[CorridorSection], list[CorridorRequirement]]:
+    """Identify continuous eligible positive-popularity road corridors and define their placement coverage requirements.
+
+    1. Excludes candidates with zero popularity (score == 0).
+    2. Groups positive candidates sharing continuous road corridors and identical popularity tiers.
+    3. Partitions long sections into sub-intervals based on target spacing (25m High, 50m Medium, 100m Low).
+    4. Generates hard coverage requirements ensuring each positive section receives placements at its target spacing.
+    """
+    if not candidates:
+        return [], []
+
+    # Map candidate indices to positive popularity
+    pos_indices: list[int] = []
+    for idx, c in enumerate(candidates):
+        tier = get_popularity_tier(c.normalized_popularity_score)
+        if tier != "zero":
+            pos_indices.append(idx)
+
+    if not pos_indices:
+        return [], []
+
+    # Build adjacency mapping for candidates attached to same/contiguous segments
+    seg_to_cands: dict[str, list[int]] = defaultdict(list)
+    for idx in pos_indices:
+        c = candidates[idx]
+        for seg_id, _ in c.segment_attachments:
+            seg_to_cands[seg_id].append(idx)
+        if c.source_segment_id not in dict(c.segment_attachments):
+            seg_to_cands[c.source_segment_id].append(idx)
+
+    max_step_m = max(candidate_sampling_interval_m * 2.5 + 1.0, 15.0)
+
+    # Candidate step-adjacency
+    adj: dict[int, set[int]] = {idx: set() for idx in pos_indices}
+    for idx in pos_indices:
+        c_i = candidates[idx]
+        tier_i = get_popularity_tier(c_i.normalized_popularity_score)
+        nearby_candidates: set[int] = set()
+        for seg_id, _ in c_i.segment_attachments:
+            nearby_candidates.update(seg_to_cands.get(seg_id, []))
+            for conn in corridor_graph.corridor_adj.get(seg_id, []):
+                other_seg = conn["other_seg_id"]
+                nearby_candidates.update(seg_to_cands.get(other_seg, []))
+
+        for other_idx in nearby_candidates:
+            if other_idx <= idx:
+                continue
+            c_j = candidates[other_idx]
+            tier_j = get_popularity_tier(c_j.normalized_popularity_score)
+            if tier_i != tier_j:
+                continue
+            # Euclidean filter
+            eucl = math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y)
+            if eucl > max_step_m:
+                continue
+            dist = corridor_graph.along_corridor_distance(
+                c_i.segment_attachments, c_j.segment_attachments, max_dist_m=max_step_m
+            )
+            if dist is not None and dist <= max_step_m + 1e-4:
+                adj[idx].add(other_idx)
+                adj[other_idx].add(idx)
+
+    # Connected components
+    visited: set[int] = set()
+    components: list[list[int]] = []
+    for idx in sorted(pos_indices):
+        if idx in visited:
+            continue
+        comp: list[int] = []
+        queue = [idx]
+        visited.add(idx)
+        while queue:
+            cur = queue.pop(0)
+            comp.append(cur)
+            for nbr in adj[cur]:
+                if nbr not in visited:
+                    visited.add(nbr)
+                    queue.append(nbr)
+        components.append(sorted(comp))
+
+    # Sort components deterministically by (tier, source_segment, min_candidate_idx)
+    components.sort(
+        key=lambda comp: (
+            get_popularity_tier(candidates[comp[0]].normalized_popularity_score),
+            candidates[comp[0]].source_segment_id,
+            comp[0],
+        )
+    )
+
+    sections: list[CorridorSection] = []
+    all_requirements: list[CorridorRequirement] = []
+
+    for sec_idx, comp in enumerate(components, start=1):
+        c0 = candidates[comp[0]]
+        tier = get_popularity_tier(c0.normalized_popularity_score)
+        spacing_m = get_popularity_target_spacing(c0.normalized_popularity_score) or DEFAULT_ROAD_BIN_SPACING_M
+        sec_id = f"corridor-{tier}-{c0.source_segment_id}-{sec_idx}"
+
+        # Linear referencing of candidates along this continuous corridor from start candidate
+        start_cand_idx = comp[0]
+        cand_positions: list[tuple[int, float]] = []
+        for c_idx in comp:
+            c = candidates[c_idx]
+            d = corridor_graph.along_corridor_distance(
+                candidates[start_cand_idx].segment_attachments,
+                c.segment_attachments,
+                max_dist_m=10000.0,
+            )
+            if d is None:
+                d = math.hypot(
+                    c.metric_x - candidates[start_cand_idx].metric_x,
+                    c.metric_y - candidates[start_cand_idx].metric_y,
+                )
+            cand_positions.append((c_idx, float(d)))
+
+        cand_positions.sort(key=lambda item: item[1])
+        min_pos = cand_positions[0][1]
+        norm_positions = [(item[0], item[1] - min_pos) for item in cand_positions]
+        length_m = norm_positions[-1][1] if norm_positions else 0.0
+
+        # Number of required placements based on spacing policy
+        if length_m <= spacing_m:
+            required_k = 1
+        else:
+            required_k = max(1, int(math.ceil(length_m / spacing_m)))
+
+        # Define requirement intervals
+        sec_reqs: list[CorridorRequirement] = []
+        if required_k == 1:
+            req = CorridorRequirement(
+                requirement_id=sec_id,
+                section_id=sec_id,
+                tier=tier,
+                target_spacing_m=spacing_m,
+                candidate_indices=tuple(comp),
+            )
+            sec_reqs.append(req)
+        else:
+            for k in range(required_k):
+                start_k = k * (length_m / required_k)
+                end_k = (k + 1) * (length_m / required_k)
+                cands_in_k = [
+                    c_i
+                    for c_i, pos in norm_positions
+                    if (start_k <= pos <= end_k)
+                    or (k == 0 and pos <= start_k)
+                    or (k == required_k - 1 and pos >= end_k)
+                ]
+                if not cands_in_k:
+                    mid_k = (start_k + end_k) / 2.0
+                    nearest = min(norm_positions, key=lambda item: abs(item[1] - mid_k))[0]
+                    cands_in_k = [nearest]
+
+                req = CorridorRequirement(
+                    requirement_id=f"{sec_id}-part-{k+1}",
+                    section_id=sec_id,
+                    tier=tier,
+                    target_spacing_m=spacing_m,
+                    candidate_indices=tuple(sorted(set(cands_in_k))),
+                )
+                sec_reqs.append(req)
+
+        section = CorridorSection(
+            section_id=sec_id,
+            tier=tier,
+            target_spacing_m=spacing_m,
+            length_m=round(length_m, 2),
+            required_placements=required_k,
+            candidate_indices=tuple(comp),
+            requirements=tuple(sec_reqs),
+        )
+        sections.append(section)
+        all_requirements.extend(sec_reqs)
+
+    return sections, all_requirements
+
+
 def find_spacing_conflict_pairs(
     candidates: list[RoadBinCandidate],
     corridor_graph: RoadCorridorGraph,
     road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
     min_spacing_m: float | None = None,
 ) -> list[tuple[int, int]]:
-    """Identify candidate pairs that conflict under the along-corridor spacing rule."""
-    if min_spacing_m is not None:
-        road_bin_spacing_m = min_spacing_m
+    """Identify candidate pairs that conflict under the along-corridor spacing rule.
+
+    Policy:
+    - Derives candidate-specific spacing from normalized_popularity_score:
+      High (>=0.60): 25 m, Medium (>=0.25): 50 m, Low (>0): 100 m.
+      Zero/default: road_bin_spacing_m (25 m baseline).
+    - If min_spacing_m is explicitly provided, acts as fixed override for backward compatibility.
+    - Stricter-pair rule: For candidate pair (i, j), required_spacing = max(spacing(i), spacing(j)).
+    - A pair conflicts along the same continuous corridor when dist < required_spacing - 1e-4.
+    """
     m = len(candidates)
     conflict_pairs: list[tuple[int, int]] = []
+
+    if min_spacing_m is not None:
+        spacings = [float(min_spacing_m)] * m
+    else:
+        spacings = [get_candidate_spacing(c, default_spacing_m=road_bin_spacing_m) for c in candidates]
+
     for i in range(m):
         c_i = candidates[i]
+        s_i = spacings[i]
         for j in range(i + 1, m):
             c_j = candidates[j]
+            s_j = spacings[j]
+            req_spacing = max(s_i, s_j)
+
             # Spatial filter: straight-line Euclidean distance is a lower bound on road distance.
-            # If Euclidean >= spacing_m, road distance must also be >= spacing_m.
-            if math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y) >= road_bin_spacing_m:
+            # If Euclidean >= req_spacing, road distance must also be >= req_spacing.
+            if math.hypot(c_i.metric_x - c_j.metric_x, c_i.metric_y - c_j.metric_y) >= req_spacing:
                 continue
 
             dist = corridor_graph.along_corridor_distance(
                 c_i.segment_attachments,
                 c_j.segment_attachments,
-                max_dist_m=road_bin_spacing_m,
+                max_dist_m=req_spacing,
             )
-            if dist is not None and dist < road_bin_spacing_m - 1e-4:
+            if dist is not None and dist < req_spacing - 1e-4:
                 conflict_pairs.append((i, j))
     return conflict_pairs
 
@@ -1428,8 +1736,10 @@ def validate_road_bin_spacing(
     corridor_graph: RoadCorridorGraph,
     placement_attachments: Mapping[str, Any] | float | None = None,
     road_bin_spacing_m: float = DEFAULT_ROAD_BIN_SPACING_M,
+    *,
+    min_spacing_m: float | None = None,
 ) -> tuple[bool, list[str]]:
-    """Validate that all selected physical road-bin placements satisfy the 25 m spacing policy along continuous road corridors."""
+    """Validate that all selected physical road-bin placements satisfy the pair-specific spacing policy along continuous road corridors."""
     if isinstance(placement_attachments, (int, float)):
         road_bin_spacing_m = float(placement_attachments)
         placement_attachments = None
@@ -1448,16 +1758,27 @@ def validate_road_bin_spacing(
     n = len(placements)
     for i in range(n):
         p_i = placements[i]
+        s_i = (
+            min_spacing_m
+            if min_spacing_m is not None
+            else get_candidate_spacing(p_i, default_spacing_m=road_bin_spacing_m)
+        )
         att_i = placement_attachments.get(p_i.placement_id, {p_i.source_segment_id: 0.0})
         for j in range(i + 1, n):
             p_j = placements[j]
+            s_j = (
+                min_spacing_m
+                if min_spacing_m is not None
+                else get_candidate_spacing(p_j, default_spacing_m=road_bin_spacing_m)
+            )
+            req_spacing = max(s_i, s_j)
             att_j = placement_attachments.get(p_j.placement_id, {p_j.source_segment_id: 0.0})
 
-            dist = corridor_graph.along_corridor_distance(att_i, att_j, max_dist_m=road_bin_spacing_m + 5.0)
-            if dist is not None and dist < road_bin_spacing_m - 1e-4:
+            dist = corridor_graph.along_corridor_distance(att_i, att_j, max_dist_m=req_spacing + 5.0)
+            if dist is not None and dist < req_spacing - 1e-4:
                 violations.append(
                     f"Selected placements {p_i.placement_id!r} and {p_j.placement_id!r} along the same road "
-                    f"corridor are {dist:.2f} m apart, violating the minimum {road_bin_spacing_m} m spacing policy."
+                    f"corridor are {dist:.2f} m apart, violating the minimum {req_spacing:.0f} m spacing policy."
                 )
     return len(violations) == 0, violations
 
@@ -1468,17 +1789,26 @@ def _solve_greedy_fallback(
     location_ids_recyclable: list[str],
     conflict_pairs: list[tuple[int, int]],
     road_bin_spacing_m: float,
+    corridor_requirements: Sequence[CorridorRequirement] | None = None,
 ) -> tuple[list[tuple[int, list[str]]], bool, str, list[str]]:
-    """Greedy fallback heuristic for stream-aware road-bin placement.
+    """Greedy fallback heuristic for stream-aware and corridor-aware road-bin placement.
 
     Selects candidates and assigned streams (Disposable, Recyclable, or Both) to maximize
-    uncovered stream requirement coverage per physical bin unit while strictly enforcing
-    the along-road spacing conflict constraints.
+    uncovered location stream requirements and positive-popularity corridor requirements per
+    physical bin unit while strictly enforcing along-corridor spacing conflict constraints.
     """
     m = len(candidates)
     uncovered_D = set(location_ids_disposable)
     uncovered_R = set(location_ids_recyclable)
+    active_corridor_reqs = list(corridor_requirements or [])
+    uncovered_corr = set(req.requirement_id for req in active_corridor_reqs)
     remaining_indices = set(range(m))
+
+    # Pre-build corridor requirement mapping per candidate
+    cand_corr_reqs: dict[int, set[str]] = defaultdict(set)
+    for req in active_corridor_reqs:
+        for c_idx in req.candidate_indices:
+            cand_corr_reqs[c_idx].add(req.requirement_id)
 
     # Pre-build conflict adjacency
     conflict_adj: dict[int, set[int]] = {i: set() for i in range(m)}
@@ -1489,41 +1819,50 @@ def _solve_greedy_fallback(
     selected: list[tuple[int, list[str]]] = []
     warnings: list[str] = []
 
-    while (uncovered_D or uncovered_R) and remaining_indices:
+    while (uncovered_D or uncovered_R or uncovered_corr) and remaining_indices:
         best_cand: int | None = None
         best_streams: list[str] = []
         best_key = (-1.0, -1, -1.0, 1)
 
         for idx in remaining_indices:
             c = candidates[idx]
+            can_disp = bool(c.eligible_disposable_location_ids)
+            can_rec = bool(c.eligible_recyclable_location_ids)
             cov_D = len(set(c.eligible_disposable_location_ids) & uncovered_D)
             cov_R = len(set(c.eligible_recyclable_location_ids) & uncovered_R)
+            cov_corr = len(cand_corr_reqs.get(idx, set()) & uncovered_corr)
+
+            if cov_D == 0 and cov_R == 0 and cov_corr == 0:
+                continue
 
             # Option 1: Both streams (2 physical bins)
-            if cov_D > 0 and cov_R > 0:
-                eff = (cov_D + cov_R) / 2.0
-                tot = cov_D + cov_R
-                key = (eff, tot, c.normalized_popularity_score, -idx)
+            if can_disp and can_rec:
+                loc_cov = cov_D + cov_R
+                weighted_val = loc_cov * 1000.0 + cov_corr * 10.0 + (0.1 if (cov_D > 0 and cov_R > 0) else 0.0)
+                eff = weighted_val / 2.0
+                key = (eff, loc_cov + cov_corr, c.normalized_popularity_score, -idx)
                 if key > best_key:
                     best_key = key
                     best_cand = idx
                     best_streams = ["Disposable", "Recyclable"]
 
             # Option 2: Disposable only (1 physical bin)
-            if cov_D > 0:
-                eff = float(cov_D)
-                tot = cov_D
-                key = (eff, tot, c.normalized_popularity_score, -idx)
+            if can_disp:
+                loc_cov = cov_D
+                weighted_val = loc_cov * 1000.0 + cov_corr * 10.0
+                eff = weighted_val / 1.0
+                key = (eff, loc_cov + cov_corr, c.normalized_popularity_score, -idx)
                 if key > best_key:
                     best_key = key
                     best_cand = idx
                     best_streams = ["Disposable"]
 
             # Option 3: Recyclable only (1 physical bin)
-            if cov_R > 0:
-                eff = float(cov_R)
-                tot = cov_R
-                key = (eff, tot, c.normalized_popularity_score, -idx)
+            if can_rec:
+                loc_cov = cov_R
+                weighted_val = loc_cov * 1000.0 + cov_corr * 10.0
+                eff = weighted_val / 1.0
+                key = (eff, loc_cov + cov_corr, c.normalized_popularity_score, -idx)
                 if key > best_key:
                     best_key = key
                     best_cand = idx
@@ -1539,6 +1878,7 @@ def _solve_greedy_fallback(
             uncovered_D -= set(selected_c.eligible_disposable_location_ids)
         if "Recyclable" in best_streams:
             uncovered_R -= set(selected_c.eligible_recyclable_location_ids)
+        uncovered_corr -= cand_corr_reqs.get(best_cand, set())
 
         # Remove the selected candidate and all candidates conflicting under spacing
         conflicts = conflict_adj.get(best_cand, set())
@@ -1549,6 +1889,11 @@ def _solve_greedy_fallback(
         warnings.append(
             f"Spacing conflicts or candidate unavailability prevented covering: "
             f"Disposable={sorted(uncovered_D)}, Recyclable={sorted(uncovered_R)}."
+        )
+    if uncovered_corr:
+        warnings.append(
+            f"Spacing conflicts or candidate unavailability prevented covering positive-popularity corridor requirements: "
+            f"{sorted(uncovered_corr)}."
         )
 
     return selected, False, "greedy_set_cover_heuristic", warnings
@@ -1563,16 +1908,19 @@ def _solve_road_bin_placement(
     location_ids_disposable: list[str] | None = None,
     location_ids_recyclable: list[str] | None = None,
     conflict_pairs: list[tuple[int, int]] | None = None,
+    corridor_requirements: Sequence[CorridorRequirement] | None = None,
 ) -> tuple[list[tuple[int, list[str]]], bool, str, list[str]]:
     """Solve the road-bin placement optimization.
 
     Lexicographical objective:
-    1. Minimize total physical road-bin units: sum(z_{j,D} + z_{j,R}).
-    2. Among minimum-bin solutions, maximize popularity-weighted quality of selected placements.
+    1. Satisfy feasible location-stream coverage requirements and positive-popularity corridor requirements.
+    2. Minimize total physical road-bin units: sum(z_{j,D} + z_{j,R}).
+    3. Among minimum-bin solutions, maximize popularity-weighted quality of selected placements.
 
     Spacing constraint:
-    y_j + y_k <= 1 for all conflict pairs (j, k) along the same continuous corridor.
-    z_{j,D} <= y_j, z_{j,R} <= y_j allows co-locating both streams at station j.
+    y_j + y_k <= 1 for all conflict pairs (j, k) along continuous road corridors.
+    Linking constraints:
+    z_{j,D} <= y_j, z_{j,R} <= y_j, and z_{j,D} + z_{j,R} >= y_j ensures that every active station has >= 1 bin.
     """
     m = len(candidates)
     if location_ids_disposable is None:
@@ -1581,8 +1929,9 @@ def _solve_road_bin_placement(
         location_ids_recyclable = list(location_ids or [])
     if conflict_pairs is None:
         conflict_pairs = []
+    active_corridor_reqs = list(corridor_requirements or [])
 
-    if m == 0 or (not location_ids_disposable and not location_ids_recyclable):
+    if m == 0 or (not location_ids_disposable and not location_ids_recyclable and not active_corridor_reqs):
         return [], False, "no_candidates", []
 
     # Map each location to candidate indices that can serve it
@@ -1597,8 +1946,9 @@ def _solve_road_bin_placement(
 
     feasible_disp = [loc_id for loc_id, c_idx in c_disp.items() if c_idx]
     feasible_rec = [loc_id for loc_id, c_idx in c_rec.items() if c_idx]
+    feasible_corr = [req for req in active_corridor_reqs if req.candidate_indices]
 
-    if not feasible_disp and not feasible_rec:
+    if not feasible_disp and not feasible_rec and not feasible_corr:
         return [], False, "no_feasible_candidates", []
 
     # Try Exact ILP via scipy.optimize.milp
@@ -1609,18 +1959,21 @@ def _solve_road_bin_placement(
         lb = np.zeros(num_vars)
         ub = np.ones(num_vars)
 
-        # Candidates that cannot serve any location have upper bound 0
-        cand_has_disp = set(j for c_list in c_disp.values() for j in c_list)
-        cand_has_rec = set(j for c_list in c_rec.values() for j in c_list)
+        # Candidates that cannot serve stream have upper bound 0 for that stream
         for j in range(m):
-            if j not in cand_has_disp:
+            c = candidates[j]
+            can_d = bool(c.eligible_disposable_location_ids)
+            can_r = bool(c.eligible_recyclable_location_ids)
+            if not can_d:
                 ub[j] = 0.0
-            if j not in cand_has_rec:
+            if not can_r:
                 ub[m + j] = 0.0
+            if not can_d and not can_r:
+                ub[2 * m + j] = 0.0
 
         bounds = Bounds(lb, ub)
 
-        # 1. Coverage constraints
+        # 1. Location coverage constraints
         constraints: list[LinearConstraint] = []
         if feasible_disp:
             num_fd = len(feasible_disp)
@@ -1638,16 +1991,37 @@ def _solve_road_bin_placement(
                     A_rec[row_idx, m + col_idx] = 1.0
             constraints.append(LinearConstraint(A_rec, np.ones(num_fr), np.full(num_fr, np.inf)))
 
-        # 2. Linking constraints: z_{j,D} - y_j <= 0, z_{j,R} - y_j <= 0
-        A_link = np.zeros((2 * m, num_vars))
+        # 2. Corridor coverage constraints: sum_{j in req.candidate_indices} y_j >= 1
+        if feasible_corr:
+            num_fc = len(feasible_corr)
+            A_corr = np.zeros((num_fc, num_vars))
+            for row_idx, req in enumerate(feasible_corr):
+                for col_cand_idx in req.candidate_indices:
+                    A_corr[row_idx, 2 * m + col_cand_idx] = 1.0
+            constraints.append(LinearConstraint(A_corr, np.ones(num_fc), np.full(num_fc, np.inf)))
+
+        # 3. Linking constraints:
+        # z_{j,D} - y_j <= 0, z_{j,R} - y_j <= 0 (cannot place bins without station)
+        # z_{j,D} + z_{j,R} - y_j >= 0 (station must have at least one physical bin)
+        A_link = np.zeros((3 * m, num_vars))
+        lb_link = np.full(3 * m, -np.inf)
+        ub_link = np.zeros(3 * m)
         for j in range(m):
+            # z_{j,D} - y_j <= 0
             A_link[j, j] = 1.0
             A_link[j, 2 * m + j] = -1.0
+            # z_{j,R} - y_j <= 0
             A_link[m + j, m + j] = 1.0
             A_link[m + j, 2 * m + j] = -1.0
-        constraints.append(LinearConstraint(A_link, np.full(2 * m, -np.inf), np.zeros(2 * m)))
+            # z_{j,D} + z_{j,R} - y_j >= 0  => lb=0.0, ub=inf
+            A_link[2 * m + j, j] = 1.0
+            A_link[2 * m + j, m + j] = 1.0
+            A_link[2 * m + j, 2 * m + j] = -1.0
+            lb_link[2 * m + j] = 0.0
+            ub_link[2 * m + j] = np.inf
+        constraints.append(LinearConstraint(A_link, lb_link, ub_link))
 
-        # 3. Spacing constraints: y_j + y_k <= 1
+        # 4. Spacing constraints: y_j + y_k <= 1
         if conflict_pairs:
             num_conf = len(conflict_pairs)
             A_conf = np.zeros((num_conf, num_vars))
@@ -1698,17 +2072,27 @@ def _solve_road_bin_placement(
 
         # If Stage 1 infeasible due to spacing conflicts, fall back and record warning
         selected, _, _, fallback_warnings = _solve_greedy_fallback(
-            candidates, feasible_disp, feasible_rec, conflict_pairs, road_bin_spacing_m
+            candidates,
+            feasible_disp,
+            feasible_rec,
+            conflict_pairs,
+            road_bin_spacing_m,
+            corridor_requirements,
         )
         warn_msg = (
-            f"Spacing conflict prevents simultaneous coverage for all locations under the "
-            f"{road_bin_spacing_m}m spacing rule; returning best valid partial coverage."
+            f"Spacing conflict prevents simultaneous coverage for all locations and corridors under the "
+            f"spacing policy; returning best valid partial coverage."
         )
-        return selected, False, "greedy_fallback_due_to_conflicts", [warn_msg] + fallback_warnings
+        return selected, False, "greedy_set_cover_heuristic", [warn_msg] + fallback_warnings
 
     # Fallback heuristic
     return _solve_greedy_fallback(
-        candidates, feasible_disp, feasible_rec, conflict_pairs, road_bin_spacing_m
+        candidates,
+        feasible_disp,
+        feasible_rec,
+        conflict_pairs,
+        road_bin_spacing_m,
+        corridor_requirements,
     )
 
 
@@ -2066,6 +2450,11 @@ def predict_road_bins(
         eligible_candidates, corridor_graph, road_bin_spacing_m
     )
 
+    # Extract eligible positive-popularity corridor sections and placement requirements
+    corridor_sections, corridor_requirements = extract_corridor_placement_requirements(
+        eligible_candidates, corridor_graph, candidate_sampling_interval_m
+    )
+
     if not eligible_candidates:
         uncovered_disp = tuple(req_disp_locs)
         uncovered_rec = tuple(req_rec_locs)
@@ -2093,7 +2482,7 @@ def predict_road_bins(
                 "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
                 "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
                 "Optimization minimizes the total count of additional physical road-bin units while satisfying stream-specific coverage requirements.",
-                "A 25m minimum spacing policy is enforced between consecutive placements along the same continuous road corridor.",
+                "A popularity-based variable spacing policy is enforced along continuous road corridors (25m for high >= 0.60, 50m for medium >= 0.25, 100m for low > 0 popularity).",
                 "Both streams may be co-located at the same road station coordinate without violating spacing.",
                 "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
             ),
@@ -2116,7 +2505,15 @@ def predict_road_bins(
                 "coverage_matrix_size": 0,
                 "conflict_count": 0,
                 "uncovered_count": len(uncovered_all),
+                "eligible_corridor_sections_count": 0,
+                "covered_corridor_sections_count": 0,
+                "uncovered_corridor_sections_count": 0,
+                "uncovered_corridor_section_ids": (),
+                "corridor_requirements_feasible": True,
             },
+            total_eligible_corridor_sections=0,
+            covered_corridor_sections=(),
+            uncovered_corridor_sections=(),
         )
 
     # 8. Candidate threshold safety check
@@ -2128,7 +2525,7 @@ def predict_road_bins(
         )
         solver_mode = "fallback"
 
-    # 9. Solve minimum-bin optimization with spacing and route-popularity tie breaking
+    # 9. Solve minimum-bin optimization with spacing, corridor placement, and route-popularity tie breaking
     selected_assignments, optimality_proven, solver_name, solver_warnings = _solve_road_bin_placement(
         candidates=active_candidates,
         location_ids_disposable=req_disp_locs or all_loc_ids,
@@ -2136,6 +2533,7 @@ def predict_road_bins(
         conflict_pairs=conflict_pairs,
         road_bin_spacing_m=road_bin_spacing_m,
         solver_mode=solver_mode,
+        corridor_requirements=corridor_requirements,
     )
     warnings.extend(solver_warnings)
 
@@ -2165,6 +2563,7 @@ def predict_road_bins(
         served_names = tuple(loc_names_map.get(lid, lid) for lid in all_served)
 
         p_id = f"road-bin-{p_idx}"
+        cand_req_spacing = get_candidate_spacing(cand, default_spacing_m=road_bin_spacing_m)
         placement = RoadBinPlacement(
             placement_id=p_id,
             longitude=cand.longitude,
@@ -2180,6 +2579,7 @@ def predict_road_bins(
             served_recyclable_location_ids=rec_served,
             physical_bin_count=len(stream_types),
             provenance="road_bin_optimizer",
+            required_spacing_m=cand_req_spacing,
         )
         placements.append(placement)
         placement_attachments[p_id] = cand.segment_attachments
@@ -2219,6 +2619,41 @@ def predict_road_bins(
         else:
             uncovered_all_ids.append(lid)
 
+    # Calculate corridor section coverage
+    selected_cand_indices = set(cand_idx for cand_idx, _ in selected_assignments)
+    covered_sec_ids: list[str] = []
+    uncovered_sec_ids: list[str] = []
+    corridor_coverage_status: dict[str, dict[str, Any]] = {}
+
+    for sec in corridor_sections:
+        reqs_satisfied = True
+        for req in sec.requirements:
+            if not any(c_i in selected_cand_indices for c_i in req.candidate_indices):
+                reqs_satisfied = False
+                break
+
+        sec_placements_count = sum(1 for c_i in sec.candidate_indices if c_i in selected_cand_indices)
+        if reqs_satisfied and sec_placements_count >= sec.required_placements:
+            covered_sec_ids.append(sec.section_id)
+            is_sec_covered = True
+        else:
+            uncovered_sec_ids.append(sec.section_id)
+            is_sec_covered = False
+
+        corridor_coverage_status[sec.section_id] = {
+            "tier": sec.tier,
+            "target_spacing_m": sec.target_spacing_m,
+            "length_m": sec.length_m,
+            "required_placements": sec.required_placements,
+            "placed_stations": sec_placements_count,
+            "covered": is_sec_covered,
+        }
+
+    if uncovered_sec_ids:
+        warnings.append(
+            f"Unmet positive-popularity corridor requirements on sections: {sorted(uncovered_sec_ids)}."
+        )
+
     total_disp_bins = sum(1 for p in placements if "Disposable" in p.stream_types)
     total_rec_bins = sum(1 for p in placements if "Recyclable" in p.stream_types)
     total_physical_bins = total_disp_bins + total_rec_bins
@@ -2247,7 +2682,7 @@ def predict_road_bins(
             "Road-bin candidate points are generated exclusively along mapped pedestrian roads within the campus boundary.",
             "Candidate points within influence zones are sampled at regular intervals (default 5m) and deduplicated.",
             "Optimization minimizes the total count of additional physical road-bin units while satisfying stream-specific coverage requirements.",
-            "A 25m minimum spacing policy is enforced between consecutive placements along the same continuous road corridor.",
+            "A popularity-based variable spacing policy is enforced along continuous road corridors (25m for high >= 0.60, 50m for medium >= 0.25, 100m for low > 0 popularity).",
             "Both streams may be co-located at the same road station coordinate without violating spacing.",
             "Route popularity is applied lexicographically as a secondary objective without increasing bin count.",
         ),
@@ -2277,6 +2712,15 @@ def predict_road_bins(
             "solver_name": solver_name,
             "optimality_proven": optimality_proven,
             "spacing_validation_passed": spacing_ok,
+            "eligible_corridor_sections_count": len(corridor_sections),
+            "covered_corridor_sections_count": len(covered_sec_ids),
+            "uncovered_corridor_sections_count": len(uncovered_sec_ids),
+            "uncovered_corridor_section_ids": tuple(sorted(uncovered_sec_ids)),
+            "corridor_requirements_feasible": len(uncovered_sec_ids) == 0,
+            "corridor_coverage_status": corridor_coverage_status,
         },
+        total_eligible_corridor_sections=len(corridor_sections),
+        covered_corridor_sections=tuple(sorted(covered_sec_ids)),
+        uncovered_corridor_sections=tuple(sorted(uncovered_sec_ids)),
     )
 

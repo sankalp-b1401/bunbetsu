@@ -2,14 +2,14 @@
  * Bunbetsu Heatmap Palette and Color Interpolation Utilities
  *
  * Implements mode-aware monochromatic color ramps grounded in Bunbetsu's design system:
- * - Total waste: green (pale green -> deep forest green)
+ * - Total waste: red (pale red -> deep crimson red)
  * - Food: orange (pale orange -> deep burnt orange)
  * - Plastic: violet (pale lavender -> deep purple)
- * - Paper: blue (pale blue -> deep blue)
- * - Glass: teal (pale teal -> deep teal)
+ * - Paper: brown (pale cream brown -> deep dark brown)
+ * - Glass: yellow (pale yellow -> deep amber-yellow)
  * - Others: slate (pale slate -> deep dark slate)
- * - Recyclable: green-teal (pale mint -> deep teal-green)
- * - Disposable: amber/orange (pale amber -> deep burnt orange)
+ * - Recyclable: green (pale green -> deep forest green)
+ * - Disposable: blue (pale blue -> deep navy blue)
  *
  * Provides smooth continuous color interpolation, explicit data contract validation,
  * and canonical normalization.
@@ -33,9 +33,9 @@ export interface HeatmapPalette {
 export const HEATMAP_PALETTES: Record<string, HeatmapPalette> = {
   total: {
     name: 'Total Waste',
-    family: 'green',
-    stops: ['#EAF5E6', '#B7E4C7', '#52B788', '#1B7A43', '#004B20'],
-    description: 'Pale green to deep forest green',
+    family: 'red',
+    stops: ['#FEF2F2', '#FCA5A5', '#EF4444', '#B91C1C', '#7F1D1D'],
+    description: 'Pale red to deep crimson red',
   },
   Food: {
     name: 'Food',
@@ -51,15 +51,15 @@ export const HEATMAP_PALETTES: Record<string, HeatmapPalette> = {
   },
   Paper: {
     name: 'Paper',
-    family: 'blue',
-    stops: ['#EFF6FF', '#93C5FD', '#2563EB', '#1D4ED8', '#172554'],
-    description: 'Pale blue to deep blue',
+    family: 'brown',
+    stops: ['#FDF8F6', '#D7B9A5', '#A26E4A', '#78350F', '#451A03'],
+    description: 'Pale cream brown to deep dark brown',
   },
   Glass: {
     name: 'Glass',
-    family: 'teal',
-    stops: ['#F0FDFA', '#5EEAD4', '#0D9488', '#0F766E', '#134E4A'],
-    description: 'Pale aqua teal to deep teal',
+    family: 'yellow',
+    stops: ['#FEFCE8', '#FEF08A', '#EAB308', '#CA8A04', '#713F12'],
+    description: 'Pale yellow to deep amber-yellow',
   },
   Others: {
     name: 'Others',
@@ -69,15 +69,15 @@ export const HEATMAP_PALETTES: Record<string, HeatmapPalette> = {
   },
   recyclable: {
     name: 'Recyclable',
-    family: 'green-teal',
-    stops: ['#ECFDF5', '#A7F3D0', '#059669', '#047857', '#064E3B'],
-    description: 'Pale mint to deep teal-green',
+    family: 'green',
+    stops: ['#EAF5E6', '#B7E4C7', '#52B788', '#1B7A43', '#004B20'],
+    description: 'Pale green to deep forest green',
   },
   disposable: {
     name: 'Disposable',
-    family: 'amber/orange',
-    stops: ['#FFFBEB', '#FDE68A', '#D97706', '#B45309', '#78350F'],
-    description: 'Pale amber to deep burnt orange',
+    family: 'blue',
+    stops: ['#EFF6FF', '#93C5FD', '#2563EB', '#1D4ED8', '#172554'],
+    description: 'Pale blue to deep navy blue',
   },
 };
 

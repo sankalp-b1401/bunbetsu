@@ -15,8 +15,8 @@
  * 2. Color & Palette tests:
  *    - Within one heatmap mode, higher values produce darker shades (lower RGB luminance / darker hex).
  *    - Lower values produce lighter shades.
- *    - Different modes use different palette families (total=green, recyclable=green-teal, disposable=amber/orange).
- *    - Different categories use their assigned monochromatic palettes (Food=orange, Plastic=violet, Paper=blue, Glass=teal, Others=slate).
+ *    - Different modes use different palette families (total=red, recyclable=green, disposable=blue).
+ *    - Different categories use their assigned monochromatic palettes (Food=orange, Plastic=violet, Paper=brown, Glass=yellow, Others=slate).
  *    - An all-zero layer avoids division by zero and produces a zero-intensity valid state.
  *    - Missing values do not receive the darkest or misleading lightest color (receive neutral fill MISSING_HEATMAP_COLOR).
  *    - Legend matches the active palette and its numeric scale (min, max, units kg, or no-data state).
@@ -414,20 +414,28 @@ const recycPalette = getHeatmapPalette('recyclable');
 const dispPalette = getHeatmapPalette('disposable');
 
 assert(
-  totalPalette.family === 'green',
-  `Total waste palette family must be green, got ${totalPalette.family}`
+  totalPalette.family === 'red',
+  `Total waste palette family must be red, got ${totalPalette.family}`
 );
 assert(
-  recycPalette.family === 'green-teal',
-  `Recyclable palette family must be green-teal, got ${recycPalette.family}`
+  recycPalette.family === 'green',
+  `Recyclable palette family must be green, got ${recycPalette.family}`
 );
 assert(
-  dispPalette.family === 'amber/orange',
-  `Disposable palette family must be amber/orange, got ${dispPalette.family}`
+  dispPalette.family === 'blue',
+  `Disposable palette family must be blue, got ${dispPalette.family}`
 );
 assert(
-  totalPalette.stops[totalPalette.stops.length - 1] !== recycPalette.stops[recycPalette.stops.length - 1],
-  'Total and Recyclable must use independent palette endpoints'
+  recycPalette.stops[0] === '#EAF5E6' && recycPalette.stops[recycPalette.stops.length - 1] === '#004B20',
+  'Recyclable heatmap must use the forest green color ramp previously used for total waste'
+);
+assert(
+  totalPalette.stops[0] === '#FEF2F2' && totalPalette.stops[totalPalette.stops.length - 1] === '#7F1D1D',
+  'Total waste heatmap must use the monochromatic red color ramp'
+);
+assert(
+  dispPalette.stops[0] === '#EFF6FF' && dispPalette.stops[dispPalette.stops.length - 1] === '#172554',
+  'Disposable waste heatmap must use the monochromatic blue color ramp'
 );
 
 // 4. Different categories use their assigned monochromatic palettes
@@ -439,9 +447,18 @@ const othersPalette = getHeatmapPalette('category', 'Others');
 
 assert(foodPalette.family === 'orange', `Food palette must be orange`);
 assert(plasticPalette.family === 'violet', `Plastic palette must be violet`);
-assert(paperPalette.family === 'blue', `Paper palette must be blue`);
-assert(glassPalette.family === 'teal', `Glass palette must be teal`);
+assert(paperPalette.family === 'brown', `Paper palette must be brown, got ${paperPalette.family}`);
+assert(glassPalette.family === 'yellow', `Glass palette must be yellow, got ${glassPalette.family}`);
 assert(othersPalette.family === 'slate', `Others palette must be slate`);
+
+assert(
+  paperPalette.stops[0] === '#FDF8F6' && paperPalette.stops[paperPalette.stops.length - 1] === '#451A03',
+  'Paper heatmap must use the monochromatic brown color ramp'
+);
+assert(
+  glassPalette.stops[0] === '#FEFCE8' && glassPalette.stops[glassPalette.stops.length - 1] === '#713F12',
+  'Glass heatmap must use the monochromatic yellow color ramp'
+);
 
 // Switching from Food to Plastic must change colors
 const colorFood = getHeatmapColorForRatio(0.8, 'category', 'Food');
@@ -449,6 +466,14 @@ const colorPlastic = getHeatmapColorForRatio(0.8, 'category', 'Plastic');
 assert(
   colorFood !== colorPlastic,
   `Switching category from Food to Plastic must produce distinct colors at ratio 0.8: Food=${colorFood}, Plastic=${colorPlastic}`
+);
+
+// Switching from Paper to Glass must change colors
+const colorPaper = getHeatmapColorForRatio(0.8, 'category', 'Paper');
+const colorGlass = getHeatmapColorForRatio(0.8, 'category', 'Glass');
+assert(
+  colorPaper !== colorGlass,
+  `Switching category from Paper to Glass must produce distinct colors at ratio 0.8: Paper=${colorPaper}, Glass=${colorGlass}`
 );
 
 // 5. An all-zero layer does not cause division by zero
@@ -516,12 +541,32 @@ assert(activeSummary.maxValue === 2500, `Max value across valid locations should
 
 const gradientCss = getGradientCss(totalPalette.stops);
 assert(
-  gradientCss.startsWith('linear-gradient(to right, #EAF5E6,'),
-  `Gradient CSS must start with lightest stop #EAF5E6: ${gradientCss}`
+  gradientCss.startsWith('linear-gradient(to right, #FEF2F2,'),
+  `Total gradient CSS must start with lightest red stop #FEF2F2: ${gradientCss}`
 );
 assert(
-  gradientCss.endsWith('#004B20)'),
-  `Gradient CSS must end with darkest stop #004B20: ${gradientCss}`
+  gradientCss.endsWith('#7F1D1D)'),
+  `Total gradient CSS must end with darkest red stop #7F1D1D: ${gradientCss}`
+);
+
+const recycGradientCss = getGradientCss(recycPalette.stops);
+assert(
+  recycGradientCss.startsWith('linear-gradient(to right, #EAF5E6,'),
+  `Recyclable gradient CSS must start with lightest green stop #EAF5E6: ${recycGradientCss}`
+);
+assert(
+  recycGradientCss.endsWith('#004B20)'),
+  `Recyclable gradient CSS must end with darkest green stop #004B20: ${recycGradientCss}`
+);
+
+const dispGradientCss = getGradientCss(dispPalette.stops);
+assert(
+  dispGradientCss.startsWith('linear-gradient(to right, #EFF6FF,'),
+  `Disposable gradient CSS must start with lightest blue stop #EFF6FF: ${dispGradientCss}`
+);
+assert(
+  dispGradientCss.endsWith('#172554)'),
+  `Disposable gradient CSS must end with darkest blue stop #172554: ${dispGradientCss}`
 );
 
 // No-data summary handling

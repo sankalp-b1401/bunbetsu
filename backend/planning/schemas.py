@@ -263,6 +263,9 @@ class RoadBinPlacementMarker(BaseModel):
     physical_bin_count: int = Field(
         default=1, description="Number of physical bin units at this station"
     )
+    required_spacing_m: Optional[float] = Field(
+        default=None, description="Popularity-based required spacing for this placement in metres"
+    )
     provenance: str = Field(default="road_bin_optimizer", description="Placement provenance")
 
 
@@ -318,6 +321,18 @@ class RoadBinRecommendationResponse(BaseModel):
     )
     spacing_validation_passed: bool = Field(
         default=True, description="True if all placements satisfy the spacing policy"
+    )
+    total_eligible_corridor_sections: Optional[int] = Field(
+        default=None, description="Total eligible positive-popularity corridor sections identified"
+    )
+    covered_corridor_sections: Optional[list[str]] = Field(
+        default=None, description="IDs of covered positive-popularity corridor sections"
+    )
+    uncovered_corridor_sections: Optional[list[str]] = Field(
+        default=None, description="IDs of uncovered positive-popularity corridor sections"
+    )
+    diagnostics: Optional[dict[str, Any]] = Field(
+        default=None, description="Corridor coverage and solver diagnostic metrics"
     )
     warnings: list[str] = Field(default_factory=list, description="Road-bin placement warnings")
     assumptions: list[str] = Field(default_factory=list, description="Model physical assumptions")
