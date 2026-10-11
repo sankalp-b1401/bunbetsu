@@ -19,11 +19,13 @@ import { AuthUser } from "../../types/bunbetsu";
 interface AuthPageProps {
   onLoginSuccess: (user: AuthUser) => void;
   onContinueAsGuest?: () => void;
+  onBackToLanding?: () => void;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({
   onLoginSuccess,
   onContinueAsGuest,
+  onBackToLanding,
 }) => {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
@@ -188,7 +190,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <img
             src="/bunbetsu-logo.png"
             alt="Bünbetsu"
-            className="h-9 sm:h-10 w-auto object-contain select-none drop-shadow-xs"
+            className={`h-9 sm:h-10 w-auto object-contain select-none drop-shadow-xs ${
+              onBackToLanding ? "cursor-pointer hover:opacity-85 transition" : ""
+            }`}
+            onClick={onBackToLanding}
+            title={onBackToLanding ? "Back to home" : "Bunbetsu"}
           />
         </div>
 
@@ -395,6 +401,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </div>
           )}
         </div>
+
+        {onBackToLanding && (
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="mt-3 text-xs text-[#5A6E62] hover:text-[#094120] transition flex items-center gap-1 cursor-pointer font-medium hover:underline"
+          >
+            ← Back to home
+          </button>
+        )}
       </div>
 
       {/* FORGOT PASSWORD MODAL */}

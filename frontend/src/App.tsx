@@ -29,6 +29,7 @@ import {
 import { requestCampusPlan } from './services/planningApi';
 import { AuthPage } from './components/Auth/AuthPage';
 import { DashboardPage } from './components/Dashboard/DashboardPage';
+import { LandingPage } from './components/Landing/LandingPage';
 import {
   supabase,
   isSupabaseConfigured,
@@ -49,8 +50,8 @@ import { SaveTemplateModal } from './components/Step2EventConfiguration/SaveTemp
 import { SavePlanModal } from './components/Step3Plan/SavePlanModal';
 
 export default function App() {
-  // Top-level navigation: 'auth' | 'dashboard' | 'planner'
-  const [currentView, setCurrentView] = useState<'auth' | 'dashboard' | 'planner'>('auth');
+  // Top-level navigation: 'landing' | 'auth' | 'dashboard' | 'planner'
+  const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'dashboard' | 'planner'>('landing');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(true);
 
@@ -532,6 +533,18 @@ export default function App() {
     setCurrentView('dashboard');
   };
 
+  const handleSignIn = () => {
+    setCurrentView('auth');
+  };
+
+  const handleTryNow = () => {
+    if (user && !user.isGuest) {
+      handleStartPlanning();
+    } else {
+      handleContinueAsGuest();
+    }
+  };
+
   const handleContinueAsGuest = () => {
     const guestUser: AuthUser = {
       name: 'Guest User',
@@ -867,7 +880,7 @@ export default function App() {
       setUser(null);
       setSavedTemplates([]);
       setRecentEvents([]);
-      setCurrentView('auth');
+      setCurrentView('landing');
       setCurrentStep(1);
       setSelectedCampus(null);
       setLocations([]);
@@ -906,10 +919,21 @@ export default function App() {
     );
   }
 
-  if (currentView === 'auth' || !user) {
+  if (currentView === 'auth') {
     return (
       <AuthPage
         onLoginSuccess={handleLoginSuccess}
+        onContinueAsGuest={handleContinueAsGuest}
+        onBackToLanding={() => setCurrentView('landing')}
+      />
+    );
+  }
+
+  if (!user || currentView === 'landing') {
+    return (
+      <LandingPage
+        onTryNow={handleTryNow}
+        onSignIn={handleSignIn}
         onContinueAsGuest={handleContinueAsGuest}
       />
     );
