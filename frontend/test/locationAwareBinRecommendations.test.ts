@@ -11,6 +11,8 @@
  * 7. Tooltip descriptions match all required card definitions.
  */
 
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   BinRecommendationResult,
   RoadBinRecommendationResult,
@@ -244,6 +246,37 @@ const mockRoadBins: RoadBinRecommendationResult = {
 
   assert(totalRecyclable === 3, 'Total recyclable bins reflects on-site gate addition');
   assert(totalDisposable === 8, 'Total disposable bins reflects on-site gate addition (5 on-site + 3 road = 8)');
+}
+
+// Test 9: Map marker location label does not show waste contribution kg
+{
+  const campusMapPath = fileURLToPath(new URL('../src/components/Map/CampusMap.tsx', import.meta.url));
+  const campusMapSource = fs.readFileSync(campusMapPath, 'utf-8');
+
+  // Must not append kg waste contribution to markerText
+  assert(
+    !campusMapSource.includes('${Math.round(heatVal).toLocaleString()} kg'),
+    'CampusMap marker text does not display waste contribution next to location name'
+  );
+  assert(
+    campusMapSource.includes('const markerText = loc.name;'),
+    'CampusMap marker text displays cleanly as loc.name'
+  );
+}
+
+// Test 10: Selected location in Bin Recommendations Card displays activity icons next to activity names
+{
+  const binPanelPath = fileURLToPath(new URL('../src/components/Step3Plan/BinRecommendationsPanel.tsx', import.meta.url));
+  const binPanelSource = fs.readFileSync(binPanelPath, 'utf-8');
+
+  assert(
+    binPanelSource.includes('<ActivityIcon type={act}'),
+    'BinRecommendationsPanel renders ActivityIcon for selected location activities'
+  );
+  assert(
+    binPanelSource.includes('<span>{act}</span>'),
+    'BinRecommendationsPanel renders activity name next to activity icon'
+  );
 }
 
 console.log(`✓ All ${passedCount} assertions passed in Location-Aware Bin Recommendations tests!`);

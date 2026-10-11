@@ -1,11 +1,12 @@
-import React from 'react';
 import {
+  ActivityType,
   BinRecommendationResult,
   CampusLocation,
   EntryGate,
   LocationWasteAllocation,
   RoadBinRecommendationResult,
 } from '../../types/bunbetsu';
+import { ACTIVITIES, ActivityIcon } from '../../constants/activities';
 import {
   Trash2,
   Recycle,
@@ -90,6 +91,14 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
     selectedLocationId ||
     'Selected Location';
 
+  const locActivities: ActivityType[] = (
+    selectedLocation?.activities?.length
+      ? selectedLocation.activities
+      : selectedLocationMeta?.activities?.length
+      ? selectedLocationMeta.activities
+      : []
+  ) as ActivityType[];
+
   // Render Card Header (without tab toggle pill)
   const renderHeader = () => (
     <div className="flex items-center justify-between pb-2 border-b border-[#E1E8DE] shrink-0">
@@ -149,6 +158,27 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
               <MapPin className="w-3 h-3 text-amber-700" />
               <span className="truncate max-w-[180px]">{selectedLocationName}</span>
             </div>
+            {locActivities.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                {locActivities.map((act) => {
+                  const meta = ACTIVITIES[act];
+                  return (
+                    <span
+                      key={act}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shadow-2xs"
+                      style={
+                        meta
+                          ? { color: meta.color, borderColor: `${meta.color}40`, backgroundColor: meta.bgColor }
+                          : { color: '#004B20', borderColor: '#E1E8DE', backgroundColor: '#FFFFFF' }
+                      }
+                    >
+                      <ActivityIcon type={act} className="w-3 h-3 shrink-0" />
+                      <span>{act}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="space-y-1">
               <AlertTriangle className="w-5 h-5 text-amber-600 mx-auto" />
               <p className="text-xs font-bold text-[#202820]">No recommendations for this location</p>
@@ -183,6 +213,27 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
               <MapPin className="w-3 h-3 text-rose-700" />
               <span className="truncate max-w-[180px]">{selectedLocationName}</span>
             </div>
+            {locActivities.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-1">
+                {locActivities.map((act) => {
+                  const meta = ACTIVITIES[act];
+                  return (
+                    <span
+                      key={act}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shadow-2xs"
+                      style={
+                        meta
+                          ? { color: meta.color, borderColor: `${meta.color}40`, backgroundColor: meta.bgColor }
+                          : { color: '#004B20', borderColor: '#E1E8DE', backgroundColor: '#FFFFFF' }
+                      }
+                    >
+                      <ActivityIcon type={act} className="w-3 h-3 shrink-0" />
+                      <span>{act}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <div className="space-y-1">
               <AlertTriangle className="w-5 h-5 text-rose-600 mx-auto" />
               <p className="text-xs font-bold text-[#202820]">
@@ -214,13 +265,37 @@ export const BinRecommendationsPanel: React.FC<BinRecommendationsPanelProps> = (
         {renderHeader()}
 
         <div className="flex-1 flex flex-col justify-center gap-2 py-2 min-h-0">
-          {/* Selected Location Pill */}
-          <div className="flex items-center justify-between p-1 px-2 bg-[#EAF5E6] rounded-lg border border-[#70D000]/30 text-xs shrink-0">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
-              <span className="font-bold text-[#004B20] truncate">{selectedLocationName}</span>
+          {/* Selected Location Pill & Activity Badges */}
+          <div className="p-1.5 px-2 bg-[#EAF5E6] rounded-lg border border-[#70D000]/30 text-xs shrink-0 space-y-1">
+            <div className="flex items-center justify-between gap-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MapPin className="w-3.5 h-3.5 text-[#004B20] shrink-0" />
+                <span className="font-bold text-[#004B20] truncate">{selectedLocationName}</span>
+              </div>
+              <span className="text-[10px] text-[#667267] font-medium shrink-0">Zone inspection</span>
             </div>
-            <span className="text-[10px] text-[#667267] font-medium shrink-0">Zone inspection</span>
+
+            {locActivities.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 pt-0.5 border-t border-[#70D000]/20">
+                {locActivities.map((act) => {
+                  const meta = ACTIVITIES[act];
+                  return (
+                    <span
+                      key={act}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shadow-2xs"
+                      style={
+                        meta
+                          ? { color: meta.color, borderColor: `${meta.color}40`, backgroundColor: meta.bgColor }
+                          : { color: '#004B20', borderColor: '#E1E8DE', backgroundColor: '#FFFFFF' }
+                      }
+                    >
+                      <ActivityIcon type={act} className="w-3 h-3 shrink-0" />
+                      <span>{act}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* 2x2 Grid matching location view */}
