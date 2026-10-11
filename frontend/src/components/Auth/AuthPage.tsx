@@ -49,11 +49,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           authMode === "signup" && combinedName
             ? combinedName
             : email.trim()
-              ? email
-                  .split("@")[0]
-                  .replace(/[._-]/g, " ")
-                  .replace(/\b\w/g, (c) => c.toUpperCase())
-              : "Aarav Sharma",
+            ? email
+                .split("@")[0]
+                .replace(/[._-]/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase())
+            : "Aarav Sharma",
         email: email.trim() || "aarav.sharma@university.edu",
         role: "Sustainability Lead",
       });
@@ -121,38 +121,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </p>
           </div>
 
-          {/* Segmented Pill Tabs: Login | Create account */}
-          <div className="grid grid-cols-2 p-1 rounded-xl bg-white border border-[#E1EBE0] gap-1 mt-3.5">
-            <button
-              type="button"
-              onClick={() => setAuthMode("login")}
-              className={`py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                authMode === "login"
-                  ? "bg-[#EAF5E7] text-[#0D4421] border border-[#70D000]/30 shadow-2xs"
-                  : "text-[#5F7366] hover:text-[#103822] border border-transparent"
-              }`}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              onClick={() => setAuthMode("signup")}
-              className={`py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                authMode === "signup"
-                  ? "bg-[#EAF5E7] text-[#0D4421] border border-[#70D000]/30 shadow-2xs"
-                  : "text-[#5F7366] hover:text-[#103822] border border-transparent"
-              }`}
-            >
-              Create account
-            </button>
-          </div>
-
           {/* Continue with Google Button */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full mt-3 py-2 px-3.5 rounded-xl border border-[#D7E3D6] hover:bg-neutral-50/80 active:bg-neutral-100 transition flex items-center justify-center gap-2 text-xs font-semibold text-[#1F2937] shadow-2xs cursor-pointer select-none"
+            className="w-full mt-4 py-2 px-3.5 rounded-xl border border-[#D7E3D6] hover:bg-neutral-50/80 active:bg-neutral-100 transition flex items-center justify-center gap-2 text-xs font-semibold text-[#1F2937] shadow-2xs cursor-pointer select-none"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
