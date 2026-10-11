@@ -98,7 +98,7 @@ class RoutingConfigSchema(BaseModel):
         description="Whether candidate connectors crossing known building/barrier geometries are flagged.",
     )
     alternative_path_tolerance_m: float = Field(
-        default=1000.0,
+        default=500.0,
         ge=0.0,
         le=500.0,
         description="Maximum additional distance in metres beyond the shortest path for alternative pedestrian paths.",
