@@ -248,7 +248,7 @@ export const EventConfiguration: React.FC<EventConfigurationProps> = ({
                 {/* Expected Footfall input */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-[#202820] truncate">
-                    Footfall
+                    Footfall (Expected No. of People)
                   </label>
                   <div className="relative flex items-center">
                     <Users className="w-4 h-4 text-[#667267] absolute left-3 pointer-events-none" />
