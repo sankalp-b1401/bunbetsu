@@ -2,6 +2,8 @@
 
 **Plan cleaner, better-organized college events.**
 
+**Live Now**: ttps://bunbetsu.vercel.app/home
+
 Bunbetsu is a campus event-planning tool that helps organizers estimate waste, decide where bins should go, and understand the pedestrian routes people are likely to use.
 
 ## The Problem
