@@ -1,179 +1,79 @@
 # Bunbetsu (分別)
 
-Intelligent Waste Management & Spatial Planning Platform for College Events
+**Plan cleaner, better-organized college events.**
+
+Bunbetsu is a campus event-planning tool that helps organizers estimate waste, decide where bins should go, and understand the pedestrian routes people are likely to use.
+
+## The Problem
+
+College events can produce large amounts of waste, but organizers may not know how much waste to expect, how many bins are needed, or where to place them. Poor bin placement and unclear walking routes can make waste collection and event movement harder to manage.
+
+## Our Solution
+
+Bunbetsu brings waste prediction and campus map planning into one workflow. Organizers select a campus, configure event activities and locations, and generate a plan to support practical waste and route decisions.
+
+## Main Features
+
+### 1. Campus & Event Waste Planner
+
+- Find and select a campus to use as the event planning area.
+- Add event locations and activity areas directly on the map.
+- Enter event details such as expected attendance and duration.
+- Mark the entry gate so it can be included in route planning.
+
+### 2. [Waste Prediction Model](backend/models/waste_predictor_model/README.md)
+
+- Estimates the total waste expected from an event using attendance, duration, and activity mix.
+- Breaks the estimate into waste categories such as food, plastic, paper, glass, and other waste.
+- Uses state-wise baseline data from CPCB where available, with an India-wide average as a fallback.
+- Helps organizers plan for waste before the event begins; predictions are estimates, not live measurements.
+- Detailed documentation: [Waste Prediction Model README](backend/models/waste_predictor_model/README.md).
+
+### 3. [Bin Distribution Model](backend/models/bin_distribution_model/README.md)
+
+- Converts predicted waste into estimated bin requirements for disposable and recyclable waste.
+- Considers the size and shape of each event area when deciding how many bins can fit.
+- Places bin markers along suitable boundaries while respecting the spacing policy.
+- Helps organizers see where bins could be placed and where physical space may limit placement.
+- Detailed documentation: [Bin Distribution Model README](backend/models/bin_distribution_model/README.md).
+
+### 4. Pedestrian Route Builder
+
+- Uses mapped walking paths to build a connected pedestrian network around the campus.
+- Connects event locations and the entry gate to nearby walking paths.
+- Estimates which paths are likely to be more important based on movement between event locations.
+- Shows route priorities on the map to help with event layout and planning; these are modelled estimates, not measured footfall.
+
+### 5. Interactive Planning Map
+
+- Brings campus boundaries, event areas, bin locations, and pedestrian routes together in one view.
+- Lets organizers inspect the layout and understand how different parts of the plan relate to one another.
+- Displays predicted route demand and planning results visually.
+- Helps identify connectivity or space constraints before event day.
+
+### 6. Saved Templates & Event History
+
+- Save an event setup as a template so it can be reused for future events.
+- Open saved templates to start planning without rebuilding the setup from scratch.
+- Save completed event plans to event history.
+- Reopen a saved event snapshot to review the plan as it was saved.
+
+### 7. Accounts & Dashboard
+
+- Sign in with an account to access saved templates and event history.
+- Use the dashboard as the starting point for a new event or an existing plan.
+- Keep saved planning data associated with the relevant user.
+- Guest access is also available for trying the planning workflow.
+
+## Tech Stack
+
+- **Frontend:** React, TypeScript, Vite
+- **Maps:** MapLibre GL, Turf.js
+- **Backend:** Python, FastAPI
+- **Planning & modelling:** NumPy, SciPy, Shapely, PyProj, NetworkX
+- **Authentication & database:** Supabase
+- **Pedestrian map data:** OpenStreetMap
 
 ---
 
-## System Components
-
-### 1. Waste Prediction Model (Phase 1)
-- Evidence-backed mathematical model predicting total waste generation based on footfall, duration, and activity intensity.
-- Predicts stream composition (Food, Plastic, Paper, Glass, Others) and recyclability breakdown.
-- Prepares spatial allocation across configured event zones.
-- Frozen deterministic contract: mathematical implementation remains unchanged.
-
-### 2. Bin Distribution Model
-- Converts predicted stream masses to volume and required bin capacities.
-- Computes perimeter spacing and samples inward-offset polygon boundaries.
-- Produces venue-constrained bin coordinate placements.
-
-### 3. Pedestrian Routes Pipeline (Phase 2)
-- **OSM Acquisition**: Retrieves eligible walkable ways and obstacle geometries (buildings, barriers) via Overpass API with caching, bounded retries, and conservative access filtering.
-- **Pedestrian Graph Construction**: Builds a metric NetworkX graph in local Azimuthal Equidistant projection, strictly preserves OSM node topology, clips paths to campus boundaries, and prevents false 2D crossing connections (grade separation).
-- **Activity Connectors**: Connects Point and Polygon event locations to the graph via nearest suitable edge points, splits edges in topological order, reuses shared junctions, and flags obstacle crossings.
-- **Route Scoring**: Evaluates shortest pedestrian paths between activity locations, allocates demand weights via symmetric geometric mean attraction proxies, and normalizes scores to `[0, 1]`.
-- **Interactive Visualization**: Renders color-coded route demand corridors, dashed access connectors, and priority junctions on MapLibre.
-
----
-
-## API Reference
-
-### Pedestrian Routes Planning
-`POST /api/routes/plan`
-
-#### Request Body
-```json
-{
-  "boundary": {
-    "type": "Polygon",
-    "coordinates": [[[81.859, 25.490], [81.868, 25.490], [81.868, 25.498], [81.859, 25.498], [81.859, 25.490]]]
-  },
-  "locations": [
-    {
-      "id": "loc-stage",
-      "name": "Main Stage",
-      "activities": ["Music Concert"],
-      "geometry": { "type": "Point", "coordinates": [81.862, 25.494] }
-    },
-    {
-      "id": "loc-food",
-      "name": "Food Quad",
-      "activities": ["Food Stalls"],
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[81.865, 25.494], [81.867, 25.494], [81.867, 25.496], [81.865, 25.496], [81.865, 25.494]]]
-      }
-    }
-  ],
-  "config": {
-    "max_snap_distance_m": 50.0,
-    "overpass_timeout_s": 25.0,
-    "check_barriers": true
-  }
-}
-```
-
-#### Response Structure
-```json
-{
-  "success": true,
-  "boundary_geojson": { ... },
-  "paths_geojson": {
-    "type": "FeatureCollection",
-    "features": [
-      {
-        "type": "Feature",
-        "id": "way_1001_osm_node_1_osm_node_2_0",
-        "geometry": { "type": "LineString", "coordinates": [...] },
-        "properties": {
-          "id": "way_1001_osm_node_1_osm_node_2_0",
-          "osm_way_id": 1001,
-          "highway": "footway",
-          "length_m": 124.5,
-          "raw_score": 0.894,
-          "normalized_score": 1.0,
-          "provenance": "osm_mapped"
-        }
-      }
-    ]
-  },
-  "connectors_geojson": {
-    "type": "FeatureCollection",
-    "features": [
-      {
-        "type": "Feature",
-        "id": "connector_loc-stage",
-        "geometry": { "type": "LineString", "coordinates": [...] },
-        "properties": {
-          "location_id": "loc-stage",
-          "snap_distance_m": 14.2,
-          "connector_length_m": 14.2,
-          "status": "connected",
-          "provenance": "connector"
-        }
-      }
-    ]
-  },
-  "location_connectivity": [
-    {
-      "location_id": "loc-stage",
-      "location_name": "Main Stage",
-      "status": "connected",
-      "snap_distance_m": 14.2,
-      "snap_point": [81.8621, 25.4941]
-    }
-  ],
-  "diagnostics": {
-    "graph": {
-      "nodes_count": 45,
-      "edges_count": 52,
-      "total_length_m": 3420.5,
-      "components_count": 1
-    },
-    "scoring": {
-      "evaluated_pairs": 1,
-      "connected_pairs": 1,
-      "unreachable_pairs": 0,
-      "max_raw_score": 0.894
-    }
-  },
-  "metadata": {
-    "score_interpretation": "Modelled relative route importance index in range [0, 1]. Indicates relative pedestrian corridor demand under event layout assumptions, not empirical sensor footfall."
-  },
-  "warnings": []
-}
-```
-
----
-
-## Configuration & Environment Variables
-
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `OVERPASS_API_URL` | `https://overpass-api.de/api/interpreter` | Upstream OpenStreetMap Overpass QL endpoint |
-| `VITE_API_BASE_URL` | `""` (proxied or direct) | FastAPI backend URL for frontend client |
-
----
-
-## Running the Application
-
-### Backend
-```bash
-# Activate virtual environment
-backend\.venv\Scripts\activate
-
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Run FastAPI server
-uvicorn server:app --app-dir backend --reload --port 8000
-```
-
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Running Tests
-```bash
-# Run all backend unit and API tests
-backend\.venv\Scripts\python -m pytest -c backend/pytest.ini backend
-
-# Run frontend type-check
-npm --prefix frontend run lint
-
-# Run frontend production build
-npm --prefix frontend run build
-```
+Bunbetsu supports planning and decision-making. Its waste and pedestrian estimates depend on the available data and model assumptions, so they should be treated as planning guidance rather than exact measurements.
